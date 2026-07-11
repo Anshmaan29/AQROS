@@ -1,1 +1,45 @@
+# macOS
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+
+# Env & secrets — NEVER commit these
+.env
+.env.*
+*.key
+*.pem
+secrets/
+credentials*
+
+# Data & models (large / reproducible — keep out of git)
+data/
+datasets/raw/
+*.parquet
+*.csv
+*.h5
+models/artifacts/
+*.pkl
+*.onnx
+
+# Logs & temp
+logs/
+*.log
+tmp/
+.cache/
+
+# IDE
+.vscode/
+.idea/
