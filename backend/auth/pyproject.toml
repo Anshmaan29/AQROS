@@ -1,0 +1,16 @@
+[project]
+name = "aqros-auth"
+version = "0.1.0"
+description = "AQROS auth service — Identity for humans (OIDC) and services (mTLS); RBAC."
+requires-python = ">=3.12"
+dependencies = ["aqros-core"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aqros_auth"]
+
+[tool.uv.sources]
+aqros-core = { workspace = true }

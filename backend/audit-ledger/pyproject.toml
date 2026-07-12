@@ -1,0 +1,16 @@
+[project]
+name = "aqros-audit-ledger"
+version = "0.1.0"
+description = "AQROS audit-ledger service — Append-only, tamper-evident record of every action."
+requires-python = ">=3.12"
+dependencies = ["aqros-core"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aqros_audit_ledger"]
+
+[tool.uv.sources]
+aqros-core = { workspace = true }

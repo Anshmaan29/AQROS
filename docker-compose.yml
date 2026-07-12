@@ -1,0 +1,85 @@
+# AQROS local stack — Phase 0.
+# Every service builds from the same parameterized Dockerfile and exposes only
+# health endpoints. Datastores (Postgres/Redis/Kafka) are added in Phase 1.
+#
+#   docker compose build && docker compose up -d
+#   curl localhost:8002/health/ready
+
+x-service-defaults: &service-defaults
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.service
+  restart: unless-stopped
+  environment:
+    AQROS_ENVIRONMENT: dev
+    AQROS_LOG_JSON: "false"
+  networks: [aqros]
+
+services:
+  api-gateway:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: api-gateway, MODULE: aqros_api_gateway, PORT: "8000" }
+    ports: ["8000:8000"]
+
+  auth:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: auth, MODULE: aqros_auth, PORT: "8001" }
+    ports: ["8001:8001"]
+
+  market-data:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: market-data, MODULE: aqros_market_data, PORT: "8002" }
+    ports: ["8002:8002"]
+
+  feature-store:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: feature-store, MODULE: aqros_feature_store, PORT: "8003" }
+    ports: ["8003:8003"]
+
+  model-registry:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: model-registry, MODULE: aqros_model_registry, PORT: "8004" }
+    ports: ["8004:8004"]
+
+  risk-engine:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: risk-engine, MODULE: aqros_risk_engine, PORT: "8005" }
+    ports: ["8005:8005"]
+
+  portfolio:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: portfolio, MODULE: aqros_portfolio, PORT: "8006" }
+    ports: ["8006:8006"]
+
+  audit-ledger:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: audit-ledger, MODULE: aqros_audit_ledger, PORT: "8007" }
+    ports: ["8007:8007"]
+
+networks:
+  aqros:
+    driver: bridge

@@ -1,0 +1,20 @@
+"""Health endpoint tests for the audit-ledger service."""
+
+from __future__ import annotations
+
+from aqros_audit_ledger.app import app
+from fastapi.testclient import TestClient
+
+client = TestClient(app)
+
+
+def test_liveness() -> None:
+    resp = client.get("/health/live")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "healthy"
+
+
+def test_readiness() -> None:
+    resp = client.get("/health/ready")
+    assert resp.status_code == 200
+    assert resp.json()["service"] == "audit-ledger"
