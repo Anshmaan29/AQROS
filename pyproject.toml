@@ -62,7 +62,12 @@ ignore = [
 "**/api/**" = ["B008"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["aqros_core", "aqros_market_data", "aqros_feature_store"]
+known-first-party = [
+    "aqros_core",
+    "aqros_market_data",
+    "aqros_feature_store",
+    "aqros_dataset_builder",
+]
 
 # ---------------------------------------------------------------------------
 # Black — formatting.

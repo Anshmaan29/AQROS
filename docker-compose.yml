@@ -1,14 +1,16 @@
 # AQROS local stack.
 # Every service builds from the same parameterized Dockerfile and exposes only
-# health endpoints, except market-data (Phase 1) and feature-store (Phase 2),
-# which each own their own Postgres database. feature-store reaches
-# market-data exclusively through its published REST API — never its
-# database (CLAUDE.md §7.9). Remaining datastores (Redis/Kafka) are added in
-# later phases.
+# health endpoints, except market-data (Phase 1), feature-store (Phase 2), and
+# dataset-builder (Phase 3), which each own their own Postgres database.
+# feature-store reaches market-data, and dataset-builder reaches both
+# market-data and feature-store, exclusively through their published REST
+# APIs — never another service's database (CLAUDE.md §7.9). Remaining
+# datastores (Redis/Kafka) are added in later phases.
 #
 #   docker compose build && docker compose up -d
 #   curl localhost:8002/health/ready
 #   curl localhost:8003/health/ready
+#   curl localhost:8008/health/ready
 
 x-service-defaults: &service-defaults
   build:
@@ -106,6 +108,50 @@ services:
       market-data:
         condition: service_started
 
+  dataset-builder-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: aqros
+      POSTGRES_DB: aqros_dataset_builder
+    ports: ["5434:5432"]
+    volumes:
+      - dataset-builder-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_dataset_builder"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [aqros]
+
+  dataset-builder:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: dataset-builder, MODULE: aqros_dataset_builder, PORT: "8008" }
+    ports: ["8008:8008"]
+    environment:
+      AQROS_ENVIRONMENT: dev
+      AQROS_LOG_JSON: "false"
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@dataset-builder-db:5432/aqros_dataset_builder
+      # Reaches Market Data (for labels, computed from future prices) and
+      # Feature Store (for the X matrix) only through their published REST
+      # APIs — never their databases.
+      AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
+      AQROS_FEATURE_STORE_BASE_URL: http://feature-store:8003
+      AQROS_DATASET_ARTIFACT_DIR: /data/dataset-builder/artifacts
+    volumes:
+      - dataset-builder-artifacts:/data/dataset-builder/artifacts
+    depends_on:
+      dataset-builder-db:
+        condition: service_healthy
+      market-data:
+        condition: service_started
+      feature-store:
+        condition: service_started
+
   model-registry:
     <<: *service-defaults
     build:
@@ -145,3 +191,5 @@ networks:
 volumes:
   market-data-db-data:
   feature-store-db-data:
+  dataset-builder-db-data:
+  dataset-builder-artifacts:
