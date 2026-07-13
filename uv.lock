@@ -140,11 +140,41 @@ name = "aqros-feature-store"
 version = "0.1.0"
 source = { editable = "backend/feature-store" }
 dependencies = [
+    { name = "alembic" },
     { name = "aqros-core" },
+    { name = "asyncpg" },
+    { name = "httpx" },
+    { name = "pandas" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "aiosqlite" },
+    { name = "pandas-stubs" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pytest-asyncio" },
+    { name = "testcontainers" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "aqros-core", editable = "libs/aqros-core" }]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13" },
+    { name = "aqros-core", editable = "libs/aqros-core" },
+    { name = "asyncpg", specifier = ">=0.29" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pandas", specifier = ">=2.2" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.35" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "pandas-stubs", specifier = ">=2.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
+]
 
 [[package]]
 name = "aqros-market-data"
