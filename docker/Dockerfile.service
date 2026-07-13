@@ -11,6 +11,16 @@ FROM python:3.12-slim AS runtime
 # uv provides fast, reproducible installs.
 COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /uvx /bin/
 
+# libgomp1 (the GNU OpenMP runtime) is a hard shared-library dependency of
+# LightGBM and XGBoost — the training-pipeline service imports both at module
+# load time, and they fail with "libgomp.so.1: cannot open shared object file"
+# on the slim base image without it. Installed unconditionally here (a few
+# hundred KB) so the shared image works for every service; a harmless no-op
+# for services that don't use those libraries.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -52,7 +62,7 @@ RUN uv sync --frozen --no-dev --package aqros-${SERVICE}
 # any volume is attached at/under it. Harmless no-op for services that don't
 # use it.
 RUN useradd --create-home --uid 1000 appuser \
-    && mkdir -p /data/dataset-builder/artifacts \
+    && mkdir -p /data/dataset-builder/artifacts /data/training-pipeline/artifacts \
     && chown -R appuser:appuser /app /data
 USER appuser
 

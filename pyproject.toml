@@ -67,6 +67,7 @@ known-first-party = [
     "aqros_market_data",
     "aqros_feature_store",
     "aqros_dataset_builder",
+    "aqros_training_pipeline",
 ]
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,14 @@ exclude = ["tests/", "build/", "dist/"]
 # strict typing, confined to the single adapter module that imports it.
 [[tool.mypy.overrides]]
 module = "yfinance.*"
+ignore_missing_imports = true
+
+# scikit-learn ships no py.typed marker and no first-party stub package exists
+# (xgboost and lightgbm both do ship py.typed, so this override is scoped to
+# sklearn only) — narrow exception confined to the training-pipeline's
+# domain/trainers.py and domain/feature_importance.py modules that import it.
+[[tool.mypy.overrides]]
+module = "sklearn.*"
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
