@@ -152,6 +152,46 @@ services:
       feature-store:
         condition: service_started
 
+  training-pipeline-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: aqros
+      POSTGRES_DB: aqros_training_pipeline
+    ports: ["5435:5432"]
+    volumes:
+      - training-pipeline-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_training_pipeline"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [aqros]
+
+  training-pipeline:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: training-pipeline, MODULE: aqros_training_pipeline, PORT: "8009" }
+    ports: ["8009:8009"]
+    environment:
+      AQROS_ENVIRONMENT: dev
+      AQROS_LOG_JSON: "false"
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@training-pipeline-db:5432/aqros_training_pipeline
+      # Reaches the Dataset Builder Service only through its published REST API
+      # — never its database, and never Market Data or Feature Store at all.
+      AQROS_DATASET_BUILDER_BASE_URL: http://dataset-builder:8008
+      AQROS_ARTIFACT_DIR: /data/training-pipeline/artifacts
+    volumes:
+      - training-pipeline-artifacts:/data/training-pipeline/artifacts
+    depends_on:
+      training-pipeline-db:
+        condition: service_healthy
+      dataset-builder:
+        condition: service_started
+
   model-registry:
     <<: *service-defaults
     build:
@@ -193,3 +233,5 @@ volumes:
   feature-store-db-data:
   dataset-builder-db-data:
   dataset-builder-artifacts:
+  training-pipeline-db-data:
+  training-pipeline-artifacts:
