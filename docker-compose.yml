@@ -1,10 +1,14 @@
 # AQROS local stack.
 # Every service builds from the same parameterized Dockerfile and exposes only
-# health endpoints, except market-data (Phase 1), which owns a Postgres
-# database. Remaining datastores (Redis/Kafka) are added in later phases.
+# health endpoints, except market-data (Phase 1) and feature-store (Phase 2),
+# which each own their own Postgres database. feature-store reaches
+# market-data exclusively through its published REST API — never its
+# database (CLAUDE.md §7.9). Remaining datastores (Redis/Kafka) are added in
+# later phases.
 #
 #   docker compose build && docker compose up -d
 #   curl localhost:8002/health/ready
+#   curl localhost:8003/health/ready
 
 x-service-defaults: &service-defaults
   build:
@@ -65,6 +69,23 @@ services:
       market-data-db:
         condition: service_healthy
 
+  feature-store-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: aqros
+      POSTGRES_DB: aqros_feature_store
+    ports: ["5433:5432"]
+    volumes:
+      - feature-store-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_feature_store"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [aqros]
+
   feature-store:
     <<: *service-defaults
     build:
@@ -72,6 +93,18 @@ services:
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: feature-store, MODULE: aqros_feature_store, PORT: "8003" }
     ports: ["8003:8003"]
+    environment:
+      AQROS_ENVIRONMENT: dev
+      AQROS_LOG_JSON: "false"
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@feature-store-db:5432/aqros_feature_store
+      # Reaches the Market Data Service only through its published REST API
+      # (container DNS name + internal port) — never its database.
+      AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
+    depends_on:
+      feature-store-db:
+        condition: service_healthy
+      market-data:
+        condition: service_started
 
   model-registry:
     <<: *service-defaults
@@ -111,3 +144,4 @@ networks:
 
 volumes:
   market-data-db-data:
+  feature-store-db-data:
