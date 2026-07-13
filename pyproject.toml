@@ -56,9 +56,13 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"] # assert is fine in tests
+# FastAPI's Depends()/Query()/Path() *must* be called in argument defaults —
+# that is how FastAPI's dependency-injection system is designed to work, so
+# bugbear's "no function calls in defaults" check is a false positive here.
+"**/api/**" = ["B008"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["aqros_core"]
+known-first-party = ["aqros_core", "aqros_market_data"]
 
 # ---------------------------------------------------------------------------
 # Black — formatting.
@@ -83,6 +87,13 @@ disallow_untyped_defs = true
 pretty = true
 exclude = ["tests/", "build/", "dist/"]
 
+# yfinance ships no type information and no third-party stub package exists
+# (checked at Phase 1 time); this is the one deliberate, narrow exception to
+# strict typing, confined to the single adapter module that imports it.
+[[tool.mypy.overrides]]
+module = "yfinance.*"
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # Pytest.
 # ---------------------------------------------------------------------------
@@ -94,6 +105,10 @@ consider_namespace_packages = true
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
+markers = [
+    "integration: tests that require a real database (e.g. via testcontainers)",
+]
 
 # ---------------------------------------------------------------------------
 # Coverage (reporting only; no gate enforced in Phase 0).

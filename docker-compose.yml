@@ -1,6 +1,7 @@
-# AQROS local stack — Phase 0.
+# AQROS local stack.
 # Every service builds from the same parameterized Dockerfile and exposes only
-# health endpoints. Datastores (Postgres/Redis/Kafka) are added in Phase 1.
+# health endpoints, except market-data (Phase 1), which owns a Postgres
+# database. Remaining datastores (Redis/Kafka) are added in later phases.
 #
 #   docker compose build && docker compose up -d
 #   curl localhost:8002/health/ready
@@ -32,6 +33,23 @@ services:
       args: { SERVICE: auth, MODULE: aqros_auth, PORT: "8001" }
     ports: ["8001:8001"]
 
+  market-data-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: aqros
+      POSTGRES_DB: aqros_market_data
+    ports: ["5432:5432"]
+    volumes:
+      - market-data-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_market_data"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [aqros]
+
   market-data:
     <<: *service-defaults
     build:
@@ -39,6 +57,13 @@ services:
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: market-data, MODULE: aqros_market_data, PORT: "8002" }
     ports: ["8002:8002"]
+    environment:
+      AQROS_ENVIRONMENT: dev
+      AQROS_LOG_JSON: "false"
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@market-data-db:5432/aqros_market_data
+    depends_on:
+      market-data-db:
+        condition: service_healthy
 
   feature-store:
     <<: *service-defaults
@@ -83,3 +108,6 @@ services:
 networks:
   aqros:
     driver: bridge
+
+volumes:
+  market-data-db-data:

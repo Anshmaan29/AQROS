@@ -27,15 +27,22 @@ ENV MODULE=${MODULE} \
 
 WORKDIR /app
 
-# Copy only the shared lib and the target service (keeps the image small and
-# builds cache-friendly).
+# Copy the workspace root (pyproject.toml + uv.lock) plus only the shared lib
+# and the target service (keeps the image small and builds cache-friendly).
+# The root files are required because every service's `aqros-core = { workspace
+# = true }` source is declared in the *root* pyproject.toml — `uv pip install`
+# on a service directory alone cannot resolve a workspace source (it has no
+# workspace to resolve it against), so this service uses `uv sync --package`
+# against the real workspace instead.
+COPY pyproject.toml uv.lock ./
 COPY libs ./libs
 COPY backend/${SERVICE} ./backend/${SERVICE}
 
-# Install aqros-core first, then the service (its `aqros-core` dependency is
-# satisfied by the already-installed local package).
-RUN uv venv /app/.venv \
-    && uv pip install ./libs/aqros-core ./backend/${SERVICE}
+# --frozen: install exactly what's pinned in uv.lock, never re-resolve.
+# --no-dev: skip dev-only tooling (pytest, ruff, mypy, ...) in the runtime image.
+# --package: install only this service (+ its workspace deps), not every
+# service in the monorepo.
+RUN uv sync --frozen --no-dev --package aqros-${SERVICE}
 
 # Run as a non-root user.
 RUN useradd --create-home --uid 1000 appuser && chown -R appuser:appuser /app
