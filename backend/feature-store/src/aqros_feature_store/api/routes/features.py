@@ -1,4 +1,4 @@
-"""Retrieval endpoints: feature definitions, values, and statistics."""
+"""Retrieval endpoints: feature definitions, values, statistics, and online serving."""
 
 from __future__ import annotations
 
@@ -6,13 +6,16 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from aqros_feature_store.api.deps import get_query_service
+from aqros_feature_store.api.deps import get_online_service, get_query_service
 from aqros_feature_store.api.schemas import (
     FeatureDefinitionResponse,
     FeatureStatisticsResponse,
     FeatureValueResponse,
+    OnlineFeatureSnapshotResponse,
+    OnlineFeatureValueResponse,
     PaginatedFeatureValuesResponse,
 )
+from aqros_feature_store.domain.online_service import OnlineFeatureService
 from aqros_feature_store.domain.services import FeatureQueryService
 
 router = APIRouter(prefix="/v1", tags=["features"])
@@ -80,6 +83,55 @@ async def get_feature_values(
         limit=limit,
         offset=offset,
         values=[FeatureValueResponse.from_domain(v) for v in values],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Online (Redis-backed) feature endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/online/instruments/{symbol}/features",
+    response_model=OnlineFeatureSnapshotResponse,
+)
+async def get_online_snapshot(
+    symbol: str,
+    service: OnlineFeatureService = Depends(get_online_service),
+) -> OnlineFeatureSnapshotResponse:
+    """Return all latest-known feature values for ``symbol`` (Redis-backed)."""
+    features = await service.get_snapshot(symbol)
+    return OnlineFeatureSnapshotResponse(
+        symbol=symbol.upper(),
+        feature_count=len(features),
+        features=features,
+    )
+
+
+@router.get(
+    "/online/instruments/{symbol}/features/{feature_name}",
+    response_model=OnlineFeatureValueResponse | None,
+)
+async def get_online_feature(
+    symbol: str,
+    feature_name: str,
+    service: OnlineFeatureService = Depends(get_online_service),
+) -> OnlineFeatureValueResponse | None:
+    """Return the latest-known value for a single feature (Redis-backed).
+
+    Returns ``{"symbol": ..., "feature_name": ..., "value": ...}`` if a value
+    exists, or ``null`` (``404``) if no value has been computed yet.
+    """
+    value = await service.get_latest(symbol, feature_name)
+    if value is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No online value for '{symbol}' feature '{feature_name}'",
+        )
+    return OnlineFeatureValueResponse(
+        symbol=symbol.upper(),
+        feature_name=feature_name,
+        value=value,
     )
 
 

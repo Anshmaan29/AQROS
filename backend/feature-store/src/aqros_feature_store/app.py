@@ -2,9 +2,9 @@
 
 Wires the shared ``aqros_core`` app factory (config, logging, health) with
 this service's business endpoints: DB engine/session lifecycle, the httpx
-client used to reach the Market Data Service's REST API, and the
-feature/pipeline routers. Mirrors ``aqros_market_data.app``'s combined-
-lifespan pattern.
+client used to reach the Market Data Service's REST API, the Redis client
+for online feature serving, and the feature/pipeline routers. Mirrors
+``aqros_market_data.app``'s combined-lifespan pattern.
 """
 
 from __future__ import annotations
@@ -13,17 +13,22 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
+import structlog
 from fastapi import FastAPI
+from redis import asyncio as aioredis
 
 from aqros_core.app import create_app
 from aqros_core.health import HealthRegistry
 from aqros_feature_store.adapters import db
 from aqros_feature_store.adapters.db import session_scope
 from aqros_feature_store.adapters.market_data_client import HttpMarketDataSource
+from aqros_feature_store.adapters.online_redis import RedisOnlineFeatureStore
 from aqros_feature_store.adapters.repository import SqlAlchemyFeatureDefinitionRepository
 from aqros_feature_store.api.routes import features, pipeline
 from aqros_feature_store.config import Settings
 from aqros_feature_store.domain.feature_definitions import FEATURE_REGISTRY
+
+_logger = structlog.get_logger(__name__)
 
 settings = Settings()
 
@@ -32,6 +37,17 @@ session_factory = db.create_session_factory(engine)
 
 health_registry = HealthRegistry()
 health_registry.register("database", lambda: db.ping(engine))
+
+
+async def _redis_health(redis_client: aioredis.Redis | None) -> bool:
+    """Readiness check: is Redis reachable?"""
+    if redis_client is None:
+        return False
+    try:
+        await redis_client.ping()
+        return True
+    except Exception:
+        return False
 
 
 async def _check_market_data_reachable(http_client: httpx.AsyncClient) -> bool:
@@ -81,11 +97,32 @@ def _build_app() -> FastAPI:
             "market_data_service", lambda: _check_market_data_reachable(http_client)
         )
 
+        # --- Redis (online feature store) ---------------------------------
+        redis_client: aioredis.Redis | None = None
+        try:
+            redis_client = aioredis.from_url(
+                str(settings.redis_url),
+                max_connections=settings.redis_pool_size,
+                socket_connect_timeout=settings.redis_connection_timeout_s,
+            )
+            await redis_client.ping()
+            app.state.online_feature_store = RedisOnlineFeatureStore(redis_client)
+            health_registry.register("redis", lambda: _redis_health(redis_client))
+        except Exception:
+            app.state.online_feature_store = None
+            _logger.warning(
+                "redis_unavailable",
+                extra={"redis_url": str(settings.redis_url)},
+            )
+
+        # --- Seed feature definitions -------------------------------------
         await _seed_feature_definitions()
 
         async with base_lifespan(app):
             yield
 
+        if redis_client is not None:
+            await redis_client.aclose()
         await http_client.aclose()
         await engine.dispose()
 

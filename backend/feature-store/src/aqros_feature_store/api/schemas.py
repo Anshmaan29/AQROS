@@ -149,6 +149,22 @@ class FeatureStatisticsResponse(BaseModel):
         )
 
 
+class OnlineFeatureValueResponse(BaseModel):
+    """A single online feature value (latest-known, Redis-backed)."""
+
+    symbol: str
+    feature_name: str
+    value: float
+
+
+class OnlineFeatureSnapshotResponse(BaseModel):
+    """All online feature values for one symbol."""
+
+    symbol: str
+    feature_count: int
+    features: dict[str, float]
+
+
 class ErrorResponse(BaseModel):
     """Typed error envelope (CLAUDE.md §5: typed, coded error responses)."""
 

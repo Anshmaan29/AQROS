@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.13",
     "pandas>=2.2",
     "httpx>=0.27",
+    "redis>=5.0",
 ]
 
 [dependency-groups]
