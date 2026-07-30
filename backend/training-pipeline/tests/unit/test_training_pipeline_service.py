@@ -16,14 +16,15 @@ from aqros_training_pipeline.domain.ports import (
     UpstreamSourceError,
 )
 from aqros_training_pipeline.domain.services import TrainingPipelineService
-from tests.unit.builders import (
+
+from .builders import (
     FEATURE_NAMES,
     make_build_run,
     make_dataframe,
     make_manifest,
     to_parquet_bytes,
 )
-from tests.unit.fakes import (
+from .fakes import (
     FakeArtifactStore,
     FakeDatasetBuilderClient,
     FakeGitInfoProvider,

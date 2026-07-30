@@ -8,7 +8,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from aqros_training_pipeline.domain import verification
-from tests.unit.builders import make_build_run, make_manifest
+
+from .builders import make_build_run, make_manifest
 
 
 def _manifest_for(data: bytes, algorithm: str = "sha256"):

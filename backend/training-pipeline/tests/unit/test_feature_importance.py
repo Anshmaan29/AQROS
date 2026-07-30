@@ -8,7 +8,8 @@ from hypothesis import strategies as st
 
 from aqros_training_pipeline.domain import feature_importance, partitioning, trainers
 from aqros_training_pipeline.domain.models import ModelType
-from tests.unit.builders import FEATURE_NAMES, make_dataframe
+
+from .builders import FEATURE_NAMES, make_dataframe
 
 _MODEL_TYPES = list(ModelType)
 

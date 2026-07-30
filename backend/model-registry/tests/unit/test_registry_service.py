@@ -37,7 +37,8 @@ from aqros_model_registry.domain.services import (
     NeverInProductionError,
     RegistryQueryService,
 )
-from tests.unit.fakes import (
+
+from .fakes import (
     FakeArtifactSigner,
     FakeArtifactStore,
     FakeAuditRepository,

@@ -12,6 +12,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
+
+try:
+    import docker as _docker
+
+    _docker.from_env().ping()
+except Exception:
+    pytest.skip("Docker is required for integration tests", allow_module_level=True)
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,

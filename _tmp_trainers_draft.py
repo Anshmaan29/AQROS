@@ -14,11 +14,11 @@ LABEL_COLUMN = "label"
 
 
 class FittedClassifier(Protocol):
-    def fit(self, X: pd.DataFrame, y: "pd.Series[object]") -> object: ...
+    def fit(self, X: pd.DataFrame, y: pd.Series[object]) -> object: ...  # noqa: N803
 
-    def predict(self, X: pd.DataFrame) -> object: ...
+    def predict(self, X: pd.DataFrame) -> object: ...  # noqa: N803
 
-    def predict_proba(self, X: pd.DataFrame) -> object: ...
+    def predict_proba(self, X: pd.DataFrame) -> object: ...  # noqa: N803
 
 
 ESTIMATOR_CLASSES: dict[ModelType, type[object]] = {
@@ -55,9 +55,7 @@ HYPERPARAMETER_DEFAULTS: dict[ModelType, dict[str, object]] = {
 }
 
 
-def merge_hyperparameters(
-    model_type: ModelType, overrides: dict[str, object]
-) -> dict[str, object]:
+def merge_hyperparameters(model_type: ModelType, overrides: dict[str, object]) -> dict[str, object]:
     merged = dict(HYPERPARAMETER_DEFAULTS[model_type])
     merged.update(overrides)
     return merged

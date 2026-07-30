@@ -15,6 +15,13 @@ import tempfile
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
+
+try:
+    import docker as _docker
+
+    _docker.from_env().ping()
+except Exception:
+    pytest.skip("Docker is required for integration tests", allow_module_level=True)
 import pytest_asyncio
 
 # Point the dataset artifact directory at a throwaway temp dir *before*

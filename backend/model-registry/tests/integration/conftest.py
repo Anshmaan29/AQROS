@@ -16,6 +16,13 @@ import tempfile
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
+
+try:
+    import docker as _docker
+
+    _docker.from_env().ping()
+except Exception:
+    pytest.skip("Docker is required for integration tests", allow_module_level=True)
 import pytest_asyncio
 
 os.environ.setdefault("AQROS_ARTIFACT_DIR", tempfile.mkdtemp(prefix="model-registry-"))
@@ -38,7 +45,8 @@ from aqros_model_registry.api.deps import (
     get_session,
     get_training_pipeline_client,
 )
-from tests.unit.fakes import FakeArtifactSigner, FakeTrainingPipelineClient
+
+from ..unit.fakes import FakeArtifactSigner, FakeTrainingPipelineClient
 
 
 @pytest.fixture(scope="session")
