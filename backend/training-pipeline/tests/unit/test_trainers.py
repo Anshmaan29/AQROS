@@ -9,7 +9,8 @@ from xgboost import XGBClassifier
 
 from aqros_training_pipeline.domain import partitioning, trainers
 from aqros_training_pipeline.domain.models import ModelType
-from tests.unit.builders import FEATURE_NAMES, make_dataframe
+
+from .builders import FEATURE_NAMES, make_dataframe
 
 
 def test_estimator_dispatch_logistic_regression() -> None:

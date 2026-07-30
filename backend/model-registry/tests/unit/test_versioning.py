@@ -32,7 +32,8 @@ from aqros_model_registry.domain.models import (
     ReproducibilityMetadata,
     ValidationEvidence,
 )
-from tests.unit.fakes import FakeModelVersionRepository
+
+from .fakes import FakeModelVersionRepository
 
 _AGGREGATED_METRICS = AggregatedMetrics(
     accuracy_mean=0.6,

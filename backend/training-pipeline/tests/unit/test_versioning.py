@@ -15,7 +15,8 @@ from aqros_training_pipeline.domain.models import (
     ReproducibilityMetadata,
     TrainedModel,
 )
-from tests.unit.fakes import FakeTrainedModelRepository
+
+from .fakes import FakeTrainedModelRepository
 
 _AGG = AggregatedMetrics(0.5, 0.0, 0.5, 0.0, 0.5, 0.0, 0.5, 0.0, None, None, 1, 0)
 

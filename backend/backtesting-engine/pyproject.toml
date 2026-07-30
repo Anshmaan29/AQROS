@@ -1,0 +1,38 @@
+[project]
+name = "aqros-backtesting-engine"
+version = "0.1.0"
+description = "AQROS backtesting-engine service — the deterministic simulation plane: replays historical market data through the shared strategy/risk/OMS core to evaluate approved production models, never touching real capital."
+requires-python = ">=3.12"
+dependencies = [
+    "aqros-core",
+    "aqros-strategy-core",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=0.24",
+    "aiosqlite>=0.20",
+    "testcontainers[postgres]>=4.8",
+    "psycopg[binary]>=3.2",
+    "hypothesis>=6.112",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aqros_backtesting_engine"]
+
+[tool.uv.sources]
+aqros-core = { workspace = true }
+aqros-strategy-core = { workspace = true }

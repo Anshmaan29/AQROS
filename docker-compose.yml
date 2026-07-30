@@ -192,6 +192,23 @@ services:
       dataset-builder:
         condition: service_started
 
+  model-registry-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: aqros
+      POSTGRES_DB: aqros_model_registry
+    ports: ["5436:5432"]
+    volumes:
+      - model-registry-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_model_registry"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [aqros]
+
   model-registry:
     <<: *service-defaults
     build:
@@ -199,6 +216,20 @@ services:
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: model-registry, MODULE: aqros_model_registry, PORT: "8004" }
     ports: ["8004:8004"]
+    environment:
+      AQROS_ENVIRONMENT: dev
+      AQROS_LOG_JSON: "false"
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@model-registry-db:5432/aqros_model_registry
+      # Reaches the Training Pipeline only through its published REST API.
+      AQROS_TRAINING_PIPELINE_BASE_URL: http://training-pipeline:8009
+      AQROS_ARTIFACT_DIR: /data/model-registry/artifacts
+    volumes:
+      - model-registry-artifacts:/data/model-registry/artifacts
+    depends_on:
+      model-registry-db:
+        condition: service_healthy
+      training-pipeline:
+        condition: service_started
 
   risk-engine:
     <<: *service-defaults
@@ -235,3 +266,5 @@ volumes:
   dataset-builder-artifacts:
   training-pipeline-db-data:
   training-pipeline-artifacts:
+  model-registry-db-data:
+  model-registry-artifacts:

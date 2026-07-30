@@ -17,6 +17,13 @@ import tempfile
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
+
+try:
+    import docker as _docker
+
+    _docker.from_env().ping()
+except Exception:
+    pytest.skip("Docker is required for integration tests", allow_module_level=True)
 import pytest_asyncio
 
 os.environ.setdefault("AQROS_ARTIFACT_DIR", tempfile.mkdtemp(prefix="training-pipeline-"))
@@ -50,7 +57,8 @@ from aqros_training_pipeline.domain.ports import (
     DatasetBuildRunNotFoundError,
     UpstreamSourceError,
 )
-from tests.unit.builders import (
+
+from ..unit.builders import (
     make_build_run,
     make_dataframe,
     make_manifest,
@@ -139,7 +147,7 @@ async def client(
     fake_client = ConfigurableFakeDatasetBuilderClient()
     artifact_store = LocalArtifactStore(str(tmp_path_factory.mktemp("artifacts")))
 
-    from tests.unit.fakes import FakeGitInfoProvider
+    from ..unit.fakes import FakeGitInfoProvider
 
     git_provider = FakeGitInfoProvider(commit_sha="testsha")
 

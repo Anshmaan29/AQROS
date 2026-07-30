@@ -56,13 +56,13 @@ RUN uv sync --frozen --no-dev --package aqros-${SERVICE}
 
 # Run as a non-root user. `/data` is pre-created here (not just `/app`)
 # because services that mount a named volume for artifacts (e.g.
-# dataset-builder's Parquet output) need it owned by `appuser` up front —
-# Docker only copies an image path's ownership into a *new* named volume the
-# first time it's mounted, so this must exist with the right owner before
-# any volume is attached at/under it. Harmless no-op for services that don't
-# use it.
+# dataset-builder's Parquet output, training-pipeline's and model-registry's
+# model artifacts) need it owned by `appuser` up front — Docker only copies
+# an image path's ownership into a *new* named volume the first time it's
+# mounted, so this must exist with the right owner before any volume is
+# attached at/under it. Harmless no-op for services that don't use it.
 RUN useradd --create-home --uid 1000 appuser \
-    && mkdir -p /data/dataset-builder/artifacts /data/training-pipeline/artifacts \
+    && mkdir -p /data/dataset-builder/artifacts /data/training-pipeline/artifacts /data/model-registry/artifacts \
     && chown -R appuser:appuser /app /data
 USER appuser
 

@@ -10,7 +10,8 @@ from hypothesis import strategies as st
 
 from aqros_training_pipeline.domain import partitioning
 from aqros_training_pipeline.domain.models import SplitRole
-from tests.unit.builders import make_dataframe
+
+from .builders import make_dataframe
 
 
 # Feature: training-pipeline, Property 4: fold and split-role assignment is read
