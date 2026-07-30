@@ -18,6 +18,7 @@ members = [
     "aqros-api-gateway",
     "aqros-audit-ledger",
     "aqros-auth",
+    "aqros-backtesting-engine",
     "aqros-core",
     "aqros-dataset-builder",
     "aqros-feature-store",
@@ -25,6 +26,7 @@ members = [
     "aqros-model-registry",
     "aqros-portfolio",
     "aqros-risk-engine",
+    "aqros-strategy-core",
     "aqros-training-pipeline",
     "aqros-workspace",
 ]
@@ -115,6 +117,57 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "aqros-core", editable = "libs/aqros-core" }]
+
+[[package]]
+name = "aqros-backtesting-engine"
+version = "0.1.0"
+source = { editable = "backend/backtesting-engine" }
+dependencies = [
+    { name = "alembic" },
+    { name = "aqros-core" },
+    { name = "aqros-strategy-core" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "aiosqlite" },
+    { name = "hypothesis" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pytest-asyncio" },
+    { name = "testcontainers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13" },
+    { name = "aqros-core", editable = "libs/aqros-core" },
+    { name = "aqros-strategy-core", editable = "libs/aqros-strategy-core" },
+    { name = "asyncpg", specifier = ">=0.29" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pydantic-settings", specifier = ">=2.3" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.35" },
+    { name = "structlog", specifier = ">=24.1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "hypothesis", specifier = ">=6.112" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
+]
 
 [[package]]
 name = "aqros-core"
@@ -267,11 +320,49 @@ name = "aqros-model-registry"
 version = "0.1.0"
 source = { editable = "backend/model-registry" }
 dependencies = [
+    { name = "alembic" },
     { name = "aqros-core" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "aiosqlite" },
+    { name = "hypothesis" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pytest-asyncio" },
+    { name = "testcontainers" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "aqros-core", editable = "libs/aqros-core" }]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13" },
+    { name = "aqros-core", editable = "libs/aqros-core" },
+    { name = "asyncpg", specifier = ">=0.29" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pydantic-settings", specifier = ">=2.3" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.35" },
+    { name = "structlog", specifier = ">=24.1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "hypothesis", specifier = ">=6.112" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
+]
 
 [[package]]
 name = "aqros-portfolio"
@@ -288,6 +379,17 @@ requires-dist = [{ name = "aqros-core", editable = "libs/aqros-core" }]
 name = "aqros-risk-engine"
 version = "0.1.0"
 source = { editable = "backend/risk-engine" }
+dependencies = [
+    { name = "aqros-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "aqros-core", editable = "libs/aqros-core" }]
+
+[[package]]
+name = "aqros-strategy-core"
+version = "0.1.0"
+source = { editable = "libs/aqros-strategy-core" }
 dependencies = [
     { name = "aqros-core" },
 ]

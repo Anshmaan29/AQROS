@@ -64,10 +64,12 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = [
     "aqros_core",
+    "aqros_strategy_core",
     "aqros_market_data",
     "aqros_feature_store",
     "aqros_dataset_builder",
     "aqros_training_pipeline",
+    "aqros_model_registry",
 ]
 
 # ---------------------------------------------------------------------------
