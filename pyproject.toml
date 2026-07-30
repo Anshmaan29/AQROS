@@ -17,6 +17,7 @@ members = ["libs/*", "backend/*"]
 
 [tool.uv.sources]
 aqros-core = { workspace = true }
+aqros-events = { workspace = true }
 
 # Dev tooling shared across the whole workspace (PEP 735 dependency group).
 [dependency-groups]
@@ -64,6 +65,7 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = [
     "aqros_core",
+    "aqros_events",
     "aqros_strategy_core",
     "aqros_market_data",
     "aqros_feature_store",
