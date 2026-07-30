@@ -8,7 +8,11 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aiokafka.errors import KafkaError
+
+try:
+    from aiokafka.errors import KafkaError
+except ModuleNotFoundError:
+    pytest.skip("aiokafka not installed (install aqros-events[kafka])", allow_module_level=True)
 
 from aqros_events.envelope import EventEnvelope
 from aqros_events.errors import EventPublishError

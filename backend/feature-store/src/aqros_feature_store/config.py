@@ -1,15 +1,16 @@
 """Configuration for the feature-store service.
 
 Extends the shared :class:`BaseServiceSettings` with this service's own
-database connection and the Market Data Service's base URL. Everything is
-loaded from environment variables (prefix ``AQROS_``) or a ``.env`` file and
-validated at construction time, so a misconfigured deployment fails fast at
-startup — same discipline as ``aqros_market_data.config``.
+database connection, the Market Data Service's base URL, and the Redis
+connection for the online feature store. Everything is loaded from environment
+variables (prefix ``AQROS_``) or a ``.env`` file and validated at construction
+time, so a misconfigured deployment fails fast at startup — same discipline
+as ``aqros_market_data.config``.
 """
 
 from __future__ import annotations
 
-from pydantic import AnyHttpUrl, Field, PostgresDsn
+from pydantic import AnyHttpUrl, Field, PostgresDsn, RedisDsn
 
 from aqros_core.config import BaseServiceSettings
 
@@ -41,6 +42,14 @@ class Settings(BaseServiceSettings):
     market_data_max_retries: int = 3
     market_data_retry_backoff_seconds: float = 1.0
     market_data_page_size: int = 1000
+
+    # --- Redis (online feature store) -------------------------------------
+    redis_url: RedisDsn = Field(
+        default=RedisDsn("redis://localhost:6379/0"),
+        description="Redis connection string for the online feature store.",
+    )
+    redis_pool_size: int = 10
+    redis_connection_timeout_s: float = 5.0
 
     # --- Feature engineering pipeline ------------------------------------
     # How many days before an incremental run's high-water mark to re-fetch

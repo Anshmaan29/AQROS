@@ -2,10 +2,10 @@
 
 Every route depends on abstractions (services, which depend on ports), never
 on concrete adapters directly. The concrete choices — which DB session
-factory, which HTTP client — are made exactly once here, reading from
-``app.state`` (set up in ``app.py``'s lifespan), so tests can override any of
-these dependencies to inject fakes without touching route code. Mirrors
-``aqros_market_data.api.deps``.
+factory, which HTTP client, which Redis client — are made exactly once here,
+reading from ``app.state`` (set up in ``app.py``'s lifespan), so tests can
+override any of these dependencies to inject fakes without touching route
+code. Mirrors ``aqros_market_data.api.deps``.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import httpx
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aqros_feature_store.adapters.repository import (
@@ -21,6 +21,8 @@ from aqros_feature_store.adapters.repository import (
     SqlAlchemyFeatureDefinitionRepository,
     SqlAlchemyFeatureValueRepository,
 )
+from aqros_feature_store.domain.online_ports import OnlineFeatureStore
+from aqros_feature_store.domain.online_service import OnlineFeatureService
 from aqros_feature_store.domain.ports import (
     FeatureComputationRunRepository,
     FeatureDefinitionRepository,
@@ -91,3 +93,24 @@ def get_query_service(
     definition_repository: FeatureDefinitionRepository = Depends(get_definition_repository),
 ) -> FeatureQueryService:
     return FeatureQueryService(value_repository, definition_repository)
+
+
+def get_online_store(request: Request) -> OnlineFeatureStore:
+    """Return the configured online feature store adapter (Redis-backed).
+
+    Raises ``503`` if the online store was not initialised (Redis unavailable
+    at startup), so callers don't silently serve stale or empty results.
+    """
+    store: OnlineFeatureStore | None = getattr(request.app.state, "online_feature_store", None)
+    if store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Online feature store not available (Redis not configured)",
+        )
+    return store
+
+
+def get_online_service(
+    online_store: OnlineFeatureStore = Depends(get_online_store),
+) -> OnlineFeatureService:
+    return OnlineFeatureService(online_store)
