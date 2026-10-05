@@ -59,8 +59,12 @@ def _build_app() -> FastAPI:
         _logger.info("api_gateway.shutdown")
 
     base_app.router.lifespan_context = combined_lifespan
-    base_app.include_router(gateway.router)
+    # Order matters: the proxy route is a catch-all (`/v1/{service}/{path:path}`)
+    # and FastAPI matches in registration order. Registering health *after* it
+    # meant `/v1/health/platform` was swallowed by the proxy and answered 404
+    # `unknown_service`.
     base_app.include_router(health.router)
+    base_app.include_router(gateway.router)
     return base_app
 
 

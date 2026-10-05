@@ -27,6 +27,7 @@ from aqros_auth.domain.policy import Role
 from aqros_auth.domain.ports import ApprovalRepository, AuditSink, UserRepository
 from aqros_auth.domain.service import AuthService, TokenSettings
 from aqros_core.app import create_app
+from aqros_core.db import schema_check
 from aqros_core.health import HealthRegistry
 
 _logger = structlog.get_logger(__name__)
@@ -37,6 +38,11 @@ engine = create_engine(settings)
 
 health_registry = HealthRegistry()
 health_registry.register("database", lambda: ping(engine))
+
+
+# Connectivity alone is not readiness: an unmigrated database answers
+# SELECT 1 happily and then 500s on every real request.
+health_registry.register("schema", schema_check(engine))
 
 
 def _build_app(
@@ -50,11 +56,13 @@ def _build_app(
 
     The repositories are injectable so tests can supply the in-memory adapters
     without a database, while production uses the Postgres ones. Injection
-    happens here rather than inside the lifespan so there is exactly one place
+    happens     here rather than inside the lifespan so there is exactly one place
     that decides which adapter serves.
+
+    Uses the module-level ``health_registry``. An earlier version created a
+    second, local registry here, which silently shadowed the module-level one —
+    so checks registered at import time never reached the health router.
     """
-    health_registry = HealthRegistry()
-    health_registry.register("database", lambda: ping(engine))
     base_app = create_app(settings, health=health_registry)
     base_lifespan = base_app.router.lifespan_context
 
@@ -94,20 +102,33 @@ def _build_app(
             settings.environment.value == "dev" if bootstrap_users is None else bootstrap_users
         )
         if should_bootstrap:
-            for username, role in (("admin", Role.ADMIN), ("committee", Role.COMMITTEE)):
-                if not await resolved_users.exists(username):
-                    await service.create_user(
-                        username=username,
-                        display_name=username.title(),
-                        password=f"{username}-dev-password-1234",
-                        roles=[role],
-                    )
-                    _logger.warning(
-                        "auth.dev_user_created",
-                        username=username,
-                        role=role.value,
-                        note="dev-only bootstrap user; never do this in staging/prod",
-                    )
+            try:
+                for username, role in (("admin", Role.ADMIN), ("committee", Role.COMMITTEE)):
+                    if not await resolved_users.exists(username):
+                        await service.create_user(
+                            username=username,
+                            display_name=username.title(),
+                            password=f"{username}-dev-password-1234",
+                            roles=[role],
+                        )
+                        _logger.warning(
+                            "auth.dev_user_created",
+                            username=username,
+                            role=role.value,
+                            note="dev-only bootstrap user; never do this in staging/prod",
+                        )
+            except Exception as exc:
+                # Startup must not hard-fail just because migrations have not run
+                # yet. A service that refuses to boot cannot report that it is
+                # not ready, and cannot recover once `make migrate` finishes —
+                # it would be stuck crash-looping. The `schema` readiness check
+                # already reports the true state; this only skips the convenience
+                # bootstrap until the tables exist.
+                _logger.warning(
+                    "auth.dev_bootstrap_skipped",
+                    error=str(exc),
+                    hint="run `make migrate` then restart to seed dev users",
+                )
 
         async with base_lifespan(app):
             yield

@@ -1,14 +1,55 @@
 # AQROS developer Makefile. Run `make help` for the list of targets.
 .DEFAULT_GOAL := help
 .PHONY: help install scaffold fmt fmt-check lint lint-fix typecheck test check \
-        precommit run docker-build docker-up docker-down clean
+        precommit run docker-build docker-up docker-down clean \
+        migrate migrate-check migrate-down up migrate-and-up
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+
+# Every database container, started before the services. Several services seed
+# rows during startup and cannot boot against an empty schema, so the order is
+# databases → migrate → services.
+DATABASES = auth-db audit-ledger-db market-data-db feature-store-db \
+            dataset-builder-db training-pipeline-db model-registry-db \
+            backtesting-engine-db risk-engine-db portfolio-db oms-db \
+            paper-trading-engine-db live-trading-engine-db redis
 
 install: ## Create the venv and install all workspace packages + dev tools
 	uv sync --all-packages
+
+up: ## Build and start the whole stack (all trust-ladder profiles)
+	@echo "==> Building images"
+	docker compose --profile trading --profile backtest --profile audit \
+		--profile live --profile paper --profile objectstore build
+	@echo "==> Starting databases (services wait for these)"
+	docker compose up -d $(DATABASES)
+	@echo "==> Applying migrations"
+	$(MAKE) --no-print-directory migrate
+	@echo "==> Starting services"
+	docker compose --profile trading --profile backtest --profile audit \
+		--profile live --profile paper --profile objectstore up -d
+	@echo
+	@echo "Stack is up. Next steps:"
+	@echo "  make status                      # health of every service"
+	@echo "  curl localhost:8000/v1/topology  # what exists and what is public"
+	@echo "  curl localhost:8000/v1/health/platform"
+
+migrate: ## Apply Alembic migrations to every running DB-owning service
+	uv run python scripts/migrate.py
+
+migrate-check: ## Report which DB-owning services are up (no changes)
+	uv run python scripts/migrate.py --check
+
+migrate-down: ## DESTRUCTIVE: roll every running service back to base
+	uv run python scripts/migrate.py --downgrade
+
+status: ## Show health of every service in the stack
+	@uv run python scripts/status.py
+
+migrate-and-up: ## Alias for `up`
+	$(MAKE) up
 
 scaffold: ## (Re)generate service/area skeletons from scripts/scaffold_services.py
 	uv run python scripts/scaffold_services.py

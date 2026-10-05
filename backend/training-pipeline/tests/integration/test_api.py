@@ -124,8 +124,10 @@ async def test_property_25_unknown_model_artifact_404(client: AsyncClient) -> No
 
 
 async def test_readiness_reports_health_checks(client: AsyncClient) -> None:
+    """Dependencies reachable, schema unmigrated → not ready."""
     resp = await client.get("/health/ready")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     checks = {c["name"]: c["healthy"] for c in resp.json()["checks"]}
     assert checks["database"] is True
+    assert checks["schema"] is False
     assert checks["dataset_builder_service"] is True

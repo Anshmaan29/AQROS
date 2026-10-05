@@ -25,6 +25,9 @@ async def test_liveness(health_client: AsyncClient) -> None:
 async def test_all_checks_healthy_returns_200(health_client: AsyncClient) -> None:
     registry = health_client.health_registry  # type: ignore[attr-defined]
     registry.register("database", lambda: True)
+    # `schema` is registered by the app (aqros_core.db.schema_check); stub it
+    # so this test exercises the registry rather than a live database.
+    registry.register("schema", lambda: True)
     resp = await health_client.get("/health/ready")
     assert resp.status_code == 200
 

@@ -160,8 +160,15 @@ async def test_list_instruments_after_ingestion(client: AsyncClient) -> None:
 
 
 async def test_readiness_reports_database_health(client: AsyncClient) -> None:
+    """Readiness must be honest about an unmigrated schema.
+
+    The database is reachable in this test, but its migrations have not run, so
+    the service would 500 on every real request. It must therefore report
+    not-ready rather than healthy — that is what the `schema` check is for.
+    """
     resp = await client.get("/health/ready")
-    assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "healthy"
     assert any(check["name"] == "database" and check["healthy"] for check in body["checks"])
+    assert any(check["name"] == "schema" and not check["healthy"] for check in body["checks"])
+    assert resp.status_code == 503
+    assert body["status"] == "unhealthy"

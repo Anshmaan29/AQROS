@@ -69,6 +69,25 @@ COPY backend/${SERVICE} ./backend/${SERVICE}
 # service in the monorepo.
 RUN uv sync --frozen --no-dev --package aqros-${SERVICE}
 
+# Entrypoint, with the module name substituted at BUILD time.
+#
+# This exists because of a real bug: `CMD ["python", "-m", "${MODULE}.main"]`
+# looks correct, but exec form has no shell, so ${MODULE} stays literal and the
+# container crash-loops on ModuleNotFoundError. Shell form
+# (`CMD python -m ${MODULE}.main`) expands correctly but makes python a child of
+# /bin/sh, so SIGTERM never reaches uvicorn and an in-flight order is cut off
+# rather than drained.
+#
+# Baking the value in here gets both: correct expansion, and `exec` so python is
+# PID 1 and receives SIGTERM directly. This must run BEFORE `USER appuser`,
+# because /usr/local/bin is root-owned. The `cat` makes the resolved command
+# visible in the build log — a silently wrong module name is otherwise very
+# hard to spot.
+RUN echo '#!/bin/sh' > /usr/local/bin/entrypoint.sh \
+    && echo "exec python -m ${MODULE}.main" >> /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh \
+    && cat /usr/local/bin/entrypoint.sh
+
 # Run as a non-root user. `/data` is pre-created here (not just `/app`)
 # because services that mount a named volume for artifacts (e.g.
 # dataset-builder's Parquet output, training-pipeline's and model-registry's
@@ -86,7 +105,4 @@ EXPOSE ${PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ['AQROS_PORT']+'/health/live')"]
 
-# Exec form (JSON array) so uvicorn receives SIGTERM directly and can shut down
-# gracefully. Shell form would make python PID 1's child and swallow the signal,
-# which on the money path means an in-flight order is cut off rather than drained.
-CMD ["python", "-m", "${MODULE}.main"]
+CMD ["/usr/local/bin/entrypoint.sh"]

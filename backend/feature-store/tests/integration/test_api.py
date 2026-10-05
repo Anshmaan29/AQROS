@@ -206,10 +206,15 @@ async def test_feature_values_as_of_filters_point_in_time(client: AsyncClient) -
 
 
 async def test_readiness_reports_database_and_market_data_health(client: AsyncClient) -> None:
+    """Upstreams are healthy, but the schema is unmigrated → not ready.
+
+    A connectivity-only readiness check would call this service healthy while
+    every real request 500s, so the `schema` check is asserted explicitly.
+    """
     resp = await client.get("/health/ready")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     body = resp.json()
-    assert body["status"] == "healthy"
+    assert body["status"] == "unhealthy"
     checks = {check["name"]: check["healthy"] for check in body["checks"]}
     assert checks["database"] is True
     assert checks["market_data_service"] is True

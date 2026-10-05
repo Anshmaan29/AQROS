@@ -16,6 +16,7 @@ import httpx
 from fastapi import FastAPI
 
 from aqros_core.app import create_app
+from aqros_core.db import schema_check
 from aqros_core.health import HealthRegistry
 from aqros_training_pipeline.adapters import db
 from aqros_training_pipeline.adapters.dataset_builder_client import HttpDatasetBuilderClient
@@ -31,6 +32,11 @@ session_factory = db.create_session_factory(engine)
 
 health_registry = HealthRegistry()
 health_registry.register("database", lambda: db.ping(engine))
+
+
+# Connectivity alone is not readiness: an unmigrated database answers
+# SELECT 1 happily and then 500s on every real request.
+health_registry.register("schema", schema_check(engine))
 
 
 async def _check_upstream_reachable(http_client: httpx.AsyncClient) -> bool:

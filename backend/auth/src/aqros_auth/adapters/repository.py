@@ -99,6 +99,11 @@ class SqlAlchemyUserRepository(UserRepository):
 def _approval_to_request(row: ApprovalRequestModel) -> ApprovalRequest:
     payload: dict[str, Any] = json.loads(row.payload or "{}")
     history: list[dict[str, Any]] = json.loads(row.history or "[]")
+    # `expires_at` is a derived property (created_at + ttl), so it cannot be
+    # assigned. Restore the *ttl* instead — otherwise a request created with a
+    # non-default TTL would come back with the 24h default and expire at the
+    # wrong time.
+    ttl = row.expires_at - row.created_at
     request = ApprovalRequest(
         request_id=row.request_id,
         action=row.action,
@@ -106,12 +111,12 @@ def _approval_to_request(row: ApprovalRequestModel) -> ApprovalRequest:
         payload=payload,
         requester_id=row.requester_id,
         created_at=row.created_at,
+        ttl=ttl,
         status=ApprovalStatus(row.status),
         approver_id=row.approver_id,
         decided_at=row.decided_at,
         executed_at=row.executed_at,
     )
-    request.expires_at = row.expires_at  # type: ignore[misc]
     request.events = [
         ApprovalEvent(
             from_status=ApprovalStatus(e["from"]) if e.get("from") else None,

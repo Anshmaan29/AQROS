@@ -22,6 +22,7 @@ from aqros_audit_ledger.api.routes import audit
 from aqros_audit_ledger.config import Settings
 from aqros_audit_ledger.domain.service import AuditLedgerService
 from aqros_core.app import create_app
+from aqros_core.db import schema_check
 from aqros_core.health import HealthRegistry
 
 _logger = structlog.get_logger(__name__)
@@ -32,6 +33,11 @@ engine = create_engine(settings)
 
 health_registry = HealthRegistry()
 health_registry.register("database", lambda: ping(engine))
+
+
+# Connectivity alone is not readiness: an unmigrated database answers
+# SELECT 1 happily and then 500s on every real request.
+health_registry.register("schema", schema_check(engine))
 
 
 def build_app(repository: object | None = None) -> FastAPI:

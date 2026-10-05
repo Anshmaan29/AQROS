@@ -87,7 +87,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_auth
-    ports: ["5445:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec auth-db psql -U aqros -d <dbname>
     volumes:
       - auth-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -119,7 +121,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_audit_ledger
-    ports: ["5439:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec audit-ledger-db psql -U aqros -d <dbname>
     volumes:
       - audit-ledger-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -137,7 +141,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_market_data
-    ports: ["5432:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec market-data-db psql -U aqros -d <dbname>
     volumes:
       - market-data-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -166,7 +172,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_feature_store
-    ports: ["5433:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec feature-store-db psql -U aqros -d <dbname>
     volumes:
       - feature-store-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -202,7 +210,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_dataset_builder
-    ports: ["5434:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec dataset-builder-db psql -U aqros -d <dbname>
     volumes:
       - dataset-builder-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -243,7 +253,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_training_pipeline
-    ports: ["5435:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec training-pipeline-db psql -U aqros -d <dbname>
     volumes:
       - training-pipeline-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -278,7 +290,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_model_registry
-    ports: ["5436:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec model-registry-db psql -U aqros -d <dbname>
     volumes:
       - model-registry-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -354,7 +368,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_backtesting_engine
-    ports: ["5440:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec backtesting-engine-db psql -U aqros -d <dbname>
     volumes:
       - backtesting-engine-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -397,7 +413,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_risk_engine
-    ports: ["5437:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec risk-engine-db psql -U aqros -d <dbname>
     volumes:
       - risk-engine-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -432,7 +450,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_portfolio
-    ports: ["5438:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec portfolio-db psql -U aqros -d <dbname>
     volumes:
       - portfolio-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -468,7 +488,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_oms
-    ports: ["5444:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec oms-db psql -U aqros -d <dbname>
     volumes:
       - oms-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -505,7 +527,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_paper_trading
-    ports: ["5442:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec paper-trading-engine-db psql -U aqros -d <dbname>
     volumes:
       - paper-trading-engine-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -539,7 +563,9 @@ services:
       POSTGRES_USER: aqros
       POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_live_trading
-    ports: ["5443:5432"]
+    # No host port published: it collides with whatever Postgres the
+    # developer already runs locally. Host-side access:
+    #   docker compose exec live-trading-engine-db psql -U aqros -d <dbname>
     volumes:
       - live-trading-engine-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -575,7 +601,10 @@ services:
 
   parity-monitor:
     <<: *service-defaults
-    profiles: ["live", "trading"]
+    # Live rung only: it compares live fills against the paper ledger, so it is
+    # not meaningful before real orders exist. Keeping it out of `trading` also
+    # stops its host port blocking a paper-trading start.
+    profiles: ["live"]
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -607,12 +636,21 @@ services:
     ports: ["6379:6379"]
     networks: [aqros]
 
-  # Object storage for datasets and model artifacts. Local disk volumes have
-  # zero durability, which would make the "everything is reproducible" claim
-  # false — MinIO provides the S3 API these artifacts should live behind, so
-  # moving local → S3/R2 is an adapter swap rather than a migration.
+  # Object storage for datasets and model artifacts.
+  #
+  # Not enabled by default. MinIO removed its Docker Hub repository and this
+  # image reference could not be resolved from the development environment, so
+  # leaving it in the default path broke `docker compose up`. Artifacts
+  # currently persist to the named volumes below, which is fine locally but has
+  # no redundancy — enabling this is a durability upgrade, not a prerequisite.
+  #
+  # To enable:
+  #   1. Verify a resolvable image: docker manifest inspect <image>
+  #   2. docker compose --profile objectstore up -d
+  #   3. Point the artifact adapters at the S3-compatible endpoint.
   minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2024-01-16T16-07-38Z}
+    profiles: ["objectstore"]
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -625,17 +663,21 @@ services:
       - minio-data:/data
     networks: [aqros]
 
-  # Creates the artifact buckets on first boot so services do not race to
-  # create them (and so a missing bucket is a startup error, not a runtime one).
+  # Creates the artifact buckets on first boot so services do not race to create
+  # them (and a missing bucket is a startup error rather than a runtime one).
   minio-init:
-    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    image: ${MINIO_MC_IMAGE:-minio/mc:RELEASE.2024-01-16T16-06-34Z}
+    profiles: ["objectstore"]
     depends_on:
       minio:
         condition: service_started
     networks: [aqros]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-aqros}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-aqros-dev-secret}
     entrypoint: >
       /bin/sh -c "
-      until mc alias set aqros http://minio:9000 aqros aqros-dev-secret; do sleep 1; done;
+      until mc alias set aqros http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 1; done;
       mc mb --ignore-existing aqros/aqros-datasets;
       mc mb --ignore-existing aqros/aqros-models;
       mc mb --ignore-existing aqros/aqros-reports;

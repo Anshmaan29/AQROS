@@ -22,6 +22,9 @@ async def test_all_checks_healthy_returns_200(health_client: AsyncClient) -> Non
     registry = health_client.health_registry  # type: ignore[attr-defined]
     registry.register("database", lambda: True)
     registry.register("artifact_store", lambda: True)
+    # `schema` is registered by the app (see aqros_core.db.schema_check);
+    # stub it so this test exercises the registry, not a live database.
+    registry.register("schema", lambda: True)
     resp = await health_client.get("/health/ready")
     assert resp.status_code == 200
 

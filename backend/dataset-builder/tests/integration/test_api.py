@@ -283,8 +283,9 @@ async def test_get_unknown_run_returns_404(client: AsyncClient) -> None:
 
 
 async def test_readiness_reports_all_health_checks(client: AsyncClient) -> None:
+    """Dependencies are reachable; the schema is not migrated → not ready."""
     resp = await client.get("/health/ready")
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     body = resp.json()
     checks = {check["name"]: check["healthy"] for check in body["checks"]}
     assert checks["database"] is True
