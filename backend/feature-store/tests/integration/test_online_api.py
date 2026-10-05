@@ -41,8 +41,12 @@ def redis_container() -> AsyncIterator[RedisContainer]:
 async def online_store(
     redis_container: RedisContainer,
 ) -> AsyncIterator[RedisOnlineFeatureStore]:
-    url = redis_container.get_connection_url()
-    client = aioredis.from_url(url, max_connections=5)
+    # testcontainers 4.x dropped RedisContainer.get_connection_url(); the
+    # portable form is host + mapped port, which also works on a remote
+    # Docker host where "localhost" inside the container is not the test host.
+    host = redis_container.get_container_host_ip()
+    port = redis_container.get_exposed_port(6379)
+    client = aioredis.from_url(f"redis://{host}:{port}", max_connections=5)
     store = RedisOnlineFeatureStore(client)
     try:
         yield store
@@ -71,13 +75,12 @@ async def client(
     app.dependency_overrides.clear()
 
 
-async def test_online_snapshot_returns_stored_features(client: AsyncClient) -> None:
-    # Seed values directly into the online store via the API's underlying
-    # service dependency.
-    from aqros_feature_store.api.deps import get_online_store
-
-    store = get_online_store(client._transport.app)  # type: ignore[arg-type]
-    await store.set_snapshot("AAPL", {"sma_20": 42.5, "rsi_14": 65.3})
+async def test_online_snapshot_returns_stored_features(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
+    # Seed values through the same store instance the app is wired with.
+    await online_store.set_snapshot("AAPL", {"sma_20": 42.5, "rsi_14": 65.3})
 
     resp = await client.get("/v1/online/instruments/AAPL/features")
     assert resp.status_code == 200
@@ -88,11 +91,11 @@ async def test_online_snapshot_returns_stored_features(client: AsyncClient) -> N
     assert body["features"]["rsi_14"] == 65.3
 
 
-async def test_online_snapshot_normalises_symbol_to_uppercase(client: AsyncClient) -> None:
-    from aqros_feature_store.api.deps import get_online_store
-
-    store = get_online_store(client._transport.app)  # type: ignore[arg-type]
-    await store.set_snapshot("AAPL", {"sma_20": 42.5})
+async def test_online_snapshot_normalises_symbol_to_uppercase(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
+    await online_store.set_snapshot("AAPL", {"sma_20": 42.5})
 
     resp = await client.get("/v1/online/instruments/aapl/features")
     assert resp.status_code == 200
@@ -100,7 +103,10 @@ async def test_online_snapshot_normalises_symbol_to_uppercase(client: AsyncClien
     assert body["symbol"] == "AAPL"
 
 
-async def test_online_snapshot_empty_symbol_returns_empty_features(client: AsyncClient) -> None:
+async def test_online_snapshot_empty_symbol_returns_empty_features(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
     resp = await client.get("/v1/online/instruments/UNKNOWN/features")
     assert resp.status_code == 200
     body = resp.json()
@@ -108,11 +114,11 @@ async def test_online_snapshot_empty_symbol_returns_empty_features(client: Async
     assert body["features"] == {}
 
 
-async def test_online_feature_returns_stored_value(client: AsyncClient) -> None:
-    from aqros_feature_store.api.deps import get_online_store
-
-    store = get_online_store(client._transport.app)  # type: ignore[arg-type]
-    await store.set_latest("AAPL", "sma_20", 42.5)
+async def test_online_feature_returns_stored_value(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
+    await online_store.set_latest("AAPL", "sma_20", 42.5)
 
     resp = await client.get("/v1/online/instruments/AAPL/features/sma_20")
     assert resp.status_code == 200
@@ -122,16 +128,19 @@ async def test_online_feature_returns_stored_value(client: AsyncClient) -> None:
     assert body["value"] == 42.5
 
 
-async def test_online_feature_returns_404_for_missing_value(client: AsyncClient) -> None:
+async def test_online_feature_returns_404_for_missing_value(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
     resp = await client.get("/v1/online/instruments/AAPL/features/nonexistent")
     assert resp.status_code == 404
 
 
-async def test_online_feature_normalises_symbol_to_uppercase(client: AsyncClient) -> None:
-    from aqros_feature_store.api.deps import get_online_store
-
-    store = get_online_store(client._transport.app)  # type: ignore[arg-type]
-    await store.set_latest("AAPL", "sma_20", 42.5)
+async def test_online_feature_normalises_symbol_to_uppercase(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
+    await online_store.set_latest("AAPL", "sma_20", 42.5)
 
     resp = await client.get("/v1/online/instruments/aapl/features/sma_20")
     assert resp.status_code == 200
@@ -139,12 +148,12 @@ async def test_online_feature_normalises_symbol_to_uppercase(client: AsyncClient
     assert body["symbol"] == "AAPL"
 
 
-async def test_online_overwrite_snapshot_returns_new_values(client: AsyncClient) -> None:
-    from aqros_feature_store.api.deps import get_online_store
-
-    store = get_online_store(client._transport.app)  # type: ignore[arg-type]
-    await store.set_snapshot("AAPL", {"sma_20": 10.0})
-    await store.set_snapshot("AAPL", {"sma_20": 20.0})
+async def test_online_overwrite_snapshot_returns_new_values(
+    client: AsyncClient,
+    online_store: RedisOnlineFeatureStore,
+) -> None:
+    await online_store.set_snapshot("AAPL", {"sma_20": 10.0})
+    await online_store.set_snapshot("AAPL", {"sma_20": 20.0})
 
     resp = await client.get("/v1/online/instruments/AAPL/features")
     assert resp.status_code == 200

@@ -1,9 +1,21 @@
 [project]
 name = "aqros-portfolio"
 version = "0.1.0"
-description = "AQROS portfolio service — Positions, P&L accounting, and optimization."
+description = "AQROS Portfolio Engine — Positions, P&L accounting, exposure, optimization."
 requires-python = ">=3.12"
-dependencies = ["aqros-core"]
+dependencies = [
+    "aqros-core",
+    "aqros-outbox",
+    "aqros-events",
+    "fastapi[standard]>=0.115.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "structlog>=24.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -14,3 +26,9 @@ packages = ["src/aqros_portfolio"]
 
 [tool.uv.sources]
 aqros-core = { workspace = true }
+aqros-outbox = { workspace = true }
+aqros-events = { workspace = true }
+
+# Lint, format, and pytest settings are owned by the workspace root
+# pyproject.toml. Per-service overrides were removed so a single config
+# governs the whole repo (ruff line-length 100 + black 100 must agree).

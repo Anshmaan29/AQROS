@@ -1,9 +1,31 @@
 [project]
 name = "aqros-risk-engine"
 version = "0.1.0"
-description = "AQROS risk-engine service — Pre-trade checks and the sovereign hard risk kernel."
+description = "AQROS risk-engine — The sovereign kernel that gates every signal before it becomes an order. Pre-trade checks, position sizing, circuit breakers, and the hard kernel of human-owned ceilings."
 requires-python = ">=3.12"
-dependencies = ["aqros-core"]
+dependencies = [
+    "aqros-core",
+    "aqros-outbox",
+    "aqros-events",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=0.24",
+    "aiosqlite>=0.20",
+    "testcontainers[postgres]>=4.8",
+    "psycopg[binary]>=3.2",
+    "hypothesis>=6.112",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -14,3 +36,5 @@ packages = ["src/aqros_risk_engine"]
 
 [tool.uv.sources]
 aqros-core = { workspace = true }
+aqros-outbox = { workspace = true }
+aqros-events = { workspace = true }

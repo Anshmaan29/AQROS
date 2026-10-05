@@ -9,7 +9,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # The quality gate: lint, format, types, tests. This is the gate that must
+  # pass before anything else matters — a red gate means the code below is not
+  # worth scanning.
+  # ---------------------------------------------------------------------------
   quality:
     name: Lint · Format · Types · Tests
     runs-on: ubuntu-latest
@@ -31,8 +39,229 @@ jobs:
       - name: Black (format check)
         run: uv run black --check .
 
-      - name: MyPy (types)
+      - name: MyPy (strict, all packages)
         run: bash scripts/typecheck.sh
 
       - name: Pytest
         run: uv run pytest
+
+  # ---------------------------------------------------------------------------
+  # Compose wiring. The topology used to drift silently (duplicate ports, a
+  # service that existed but was never wired), which only surfaced at
+  # `docker compose up`. These tests make that a CI failure instead.
+  # ---------------------------------------------------------------------------
+  compose-wiring:
+    name: Compose wiring & money-path exposure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Validate compose config
+        run: docker compose config --quiet
+
+      - name: Install workspace
+        run: uv sync --all-packages
+
+      - name: Structural compose tests (port/DB isolation, exposure policy)
+        run: uv run pytest backend/api-gateway/tests/test_compose_wiring.py -v
+
+      - name: Shared-core invariants (CLAUDE.md §7.1, §7.9)
+        run: uv run pytest backend/api-gateway/tests/test_shared_core_invariants.py -v
+
+  # ---------------------------------------------------------------------------
+  # Secret scanning. pre-commit hooks are bypassable (--no-verify, or a change
+  # made outside a hook), so a committed secret must be caught by CI too.
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # required for SARIF upload
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so a secret already committed is caught even if it is
+          # no longer present in the working tree.
+          fetch-depth: 0
+
+      - name: gitleaks (full history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Required by the action; not a real credential. Committed on purpose
+          # so the scan has something to exclude without a secret.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Dependency vulnerabilities. uv.lock pins everything; this gate catches CVEs
+  # in that pinned set.
+  # ---------------------------------------------------------------------------
+  dependency-audit:
+    name: Dependency audit (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync workspace
+        run: uv sync --all-packages
+
+      - name: uv audit
+        run: uv export --frozen --no-hashes --format requirements-txt > /tmp/requirements.txt
+
+      - name: pip-audit
+        uses: pypa/pip-audit-action@v1
+        with:
+          inputs: /tmp/requirements.txt
+
+  # ---------------------------------------------------------------------------
+  # Container supply chain: SBOM + CVE scan + digest pinning + signing.
+  #
+  # Image builds are tag-pinned rather than digest-pinned in
+  # docker/Dockerfile.service. That is tracked in the review as remaining work;
+  # this job at minimum makes the gap visible in every build.
+  # ---------------------------------------------------------------------------
+  container-scan:
+    name: Container SBOM + CVE scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the api-gateway image (representative of Dockerfile.service)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.service
+          build-args: |
+            SERVICE=api-gateway
+            MODULE=aqros_api_gateway
+            PORT=8000
+          push: false
+          load: true
+          tags: aqros/api-gateway:ci
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: aqros/api-gateway:ci
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Scan image for CVEs
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: aqros/api-gateway:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  # ---------------------------------------------------------------------------
+  # Migration round-trip. A service whose migration only goes up, or only down,
+  # is not deployable or not recoverable.
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: Alembic up/down round-trip
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aqros
+          POSTGRES_PASSWORD: aqros
+          POSTGRES_DB: aqros_migration_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aqros"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - market-data
+          - feature-store
+          - dataset-builder
+          - training-pipeline
+          - model-registry
+          - backtesting-engine
+          - risk-engine
+          - portfolio
+          - auth
+          - audit-ledger
+          - oms
+          - live-trading-engine
+          - paper-trading-engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install workspace
+        run: uv sync --all-packages
+
+      - name: Apply migrations then roll back to base
+        env:
+          AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@localhost:5432/aqros_migration_test
+        run: |
+          cd "backend/${{ matrix.service }}"
+          uv run alembic upgrade head
+          # A migration that cannot be reversed is a rollback that cannot be
+          # planned; both directions must work before real capital.
+          uv run alembic downgrade base
+
+  # ---------------------------------------------------------------------------
+  # The money-path gate. CLAUDE.md §7.1 requires the shared backtest/live core
+  # to pass deterministic replay, so a golden-replay failure must block a merge
+  # rather than show up as one failing test among many.
+  # ---------------------------------------------------------------------------
+  golden-replay:
+    name: Golden replay (shared backtest/live core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install workspace
+        run: uv sync --all-packages
+
+      - name: Shared-core golden replay must be byte-identical
+        run: |
+          uv run pytest libs/aqros-strategy-core/tests/test_golden_replay.py -v
+
+      - name: Backtest-engine golden replay
+        run: |
+          uv run pytest backend/backtesting-engine/tests/integration/test_golden_replay.py -v

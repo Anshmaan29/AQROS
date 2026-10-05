@@ -6,10 +6,25 @@
 #     --build-arg PORT=8002 -t aqros/market-data .
 # (docker-compose.yml sets these args for every service automatically.)
 
-FROM python:3.12-slim AS runtime
+# --- Supply chain ------------------------------------------------------------
+# Both bases are pinned by digest, not tag. A tag like `python:3.12-slim` is
+# mutable: whoever controls the registry can repoint it, which is how a supply
+# chain compromise gets in. Digest pinning makes the build reproducible and the
+# contents verifiable.
+#
+# Refresh a pin with:
+#   docker buildx imagetools inspect python:3.12-slim  --format '{{.Manifest.Digest}}'
+#   docker buildx imagetools inspect ghcr.io/astral-sh/uv:0.10 --format '{{.Manifest.Digest}}'
+#
+# Note: `--from=` cannot take an ARG, so each pinned image gets its own named
+# stage that the runtime stage copies from. That is the workaround BuildKit
+# requires, not an accident.
+FROM ghcr.io/astral-sh/uv:0.10@sha256:72ab0aeb448090480ccabb99fb5f52b0dc3c71923bffb5e2e26517a1c27b7fec AS uv
+
+FROM python:3.12-slim@sha256:02108f5d322dd89f1c9e552442c25acb0543dfdbc455693a5599624f20d9155d AS runtime
 
 # uv provides fast, reproducible installs.
-COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /uvx /bin/
+COPY --from=uv /uv /uvx /bin/
 
 # libgomp1 (the GNU OpenMP runtime) is a hard shared-library dependency of
 # LightGBM and XGBoost — the training-pipeline service imports both at module
@@ -71,4 +86,7 @@ EXPOSE ${PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ['AQROS_PORT']+'/health/live')"]
 
-CMD python -m ${MODULE}.main
+# Exec form (JSON array) so uvicorn receives SIGTERM directly and can shut down
+# gracefully. Shell form would make python PID 1's child and swallow the signal,
+# which on the money path means an in-flight order is cut off rather than drained.
+CMD ["python", "-m", "${MODULE}.main"]

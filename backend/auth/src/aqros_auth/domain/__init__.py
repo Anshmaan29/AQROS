@@ -1,1 +1,1 @@
-"""domain layer for the auth service (populated in later phases)."""
+"""Pure domain: policy, tokens, approvals, ports, and use cases."""

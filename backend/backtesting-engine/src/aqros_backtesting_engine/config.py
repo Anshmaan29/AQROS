@@ -20,7 +20,7 @@ class Settings(BaseServiceSettings):
 
     database_url: PostgresDsn = Field(
         default=PostgresDsn(
-            "postgresql+asyncpg://aqros:aqros@localhost:5437/aqros_backtesting_engine"
+            "postgresql+asyncpg://aqros:aqros@localhost:5440/aqros_backtesting_engine"
         ),
         description="Async SQLAlchemy DSN for the backtesting-engine database.",
     )

@@ -1,1 +1,1 @@
-"""domain layer for the audit-ledger service (populated in later phases)."""
+"""Pure domain: the tamper-evident hash chain."""

@@ -1,0 +1,32 @@
+[project]
+name = "aqros-inference-service"
+version = "0.1.0"
+description = "AQROS inference service — Production model serving with online feature integration."
+requires-python = ">=3.12"
+dependencies = [
+    "aqros-core",
+    "aqros-events",
+    "aqros-outbox",
+    "httpx>=0.27",
+    "redis>=5.0",
+    "numpy>=1.26",
+    "pydantic>=2.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=0.24",
+    "pytest-httpx>=0.35",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aqros_inference_service"]
+
+[tool.uv.sources]
+aqros-core = { workspace = true }
+aqros-events = { workspace = true }
+aqros-outbox = { workspace = true }

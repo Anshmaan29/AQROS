@@ -1,28 +1,53 @@
-# AQROS local stack.
-# Every service builds from the same parameterized Dockerfile and exposes only
-# health endpoints, except market-data (Phase 1), feature-store (Phase 2), and
-# dataset-builder (Phase 3), which each own their own Postgres database.
-# feature-store reaches market-data, and dataset-builder reaches both
-# market-data and feature-store, exclusively through their published REST
-# APIs — never another service's database (CLAUDE.md §7.9). Remaining
-# datastores (Redis/Kafka) are added in later phases.
+# AQROS local stack — the full platform.
 #
-#   docker compose build && docker compose up -d
-#   curl localhost:8002/health/ready
-#   curl localhost:8003/health/ready
-#   curl localhost:8008/health/ready
+# Rules this file must keep (CLAUDE.md):
+#   * One Postgres database per service. No service reaches another's DB
+#     (§7.9) — cross-service access is via published REST APIs only.
+#   * Every service builds from the same parameterized Dockerfile and gets the
+#     same health endpoints, logging, correlation IDs, and /metrics from
+#     aqros-core.
+#   * `depends_on: service_healthy` (not `service_started`) wherever readiness
+#     actually matters, so a dependency is *serving* before its dependents start.
+#
+# Usage:
+#   docker compose up -d --build
+#   curl localhost:8000/v1/topology            # what exists, and what is public
+#   curl localhost:8000/v1/health/platform     # aggregate health of every service
+#
+# Profiles let you bring up a subset while iterating:
+#   docker compose up -d market-data feature-store   # just the data plane
+#   docker compose --profile trading up -d           # add the money path
 
+# ---------------------------------------------------------------------------
+# Shared defaults
+# ---------------------------------------------------------------------------
 x-service-defaults: &service-defaults
   build:
     context: .
     dockerfile: docker/Dockerfile.service
   restart: unless-stopped
-  environment:
+  environment: &service-env
     AQROS_ENVIRONMENT: dev
     AQROS_LOG_JSON: "false"
+    # Non-secret local development credentials only. Real deployments read
+    # secrets from Vault/KMS via the SecretsClient port (never baked in).
+    AQROS_POSTGRES_USER: ${AQROS_POSTGRES_USER:-aqros}
+    AQROS_POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+  networks: [aqros]
+
+# A Postgres database owned by exactly one service.
+x-pg: &pg-defaults
+  image: postgres:16-alpine
+  restart: unless-stopped
+  environment:
+    POSTGRES_USER: aqros
+    POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
   networks: [aqros]
 
 services:
+  # =========================================================================
+  # Control plane — the public edge
+  # =========================================================================
   api-gateway:
     <<: *service-defaults
     build:
@@ -30,6 +55,13 @@ services:
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: api-gateway, MODULE: aqros_api_gateway, PORT: "8000" }
     ports: ["8000:8000"]
+    environment:
+      <<: *service-env
+      AQROS_AUTH_BASE_URL: http://auth:8001
+      AQROS_PROBE_TIMEOUT_SECONDS: "3.0"
+    depends_on:
+      auth:
+        condition: service_started
 
   auth:
     <<: *service-defaults
@@ -38,13 +70,72 @@ services:
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: auth, MODULE: aqros_auth, PORT: "8001" }
     ports: ["8001:8001"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@auth-db:5432/aqros_auth
+      AQROS_JWT_SECRET: ${AQROS_JWT_SECRET:-dev-only-insecure-secret-change-me-32chars}
+      AQROS_JWT_ALGORITHM: HS256
+      AQROS_JWT_ISSUER: aqros-auth
+      AQROS_JWT_AUDIENCE: aqros-platform
+    depends_on:
+      auth-db:
+        condition: service_healthy
 
-  market-data-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+  auth-db:
+    <<: *pg-defaults
     environment:
       POSTGRES_USER: aqros
-      POSTGRES_PASSWORD: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_auth
+    ports: ["5445:5432"]
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  audit-ledger:
+    <<: *service-defaults
+    profiles: ["audit", "trading"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: audit-ledger, MODULE: aqros_audit_ledger, PORT: "8007" }
+    # Bound to loopback only: the ledger is internal (no public exposure).
+    ports: ["127.0.0.1:8007:8007"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@audit-ledger-db:5432/aqros_audit_ledger
+    depends_on:
+      audit-ledger-db:
+        condition: service_healthy
+
+  audit-ledger-db:
+    <<: *pg-defaults
+    profiles: ["audit", "trading"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_audit_ledger
+    ports: ["5439:5432"]
+    volumes:
+      - audit-ledger-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_audit_ledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # =========================================================================
+  # Data plane — research (safe: no capital at risk)
+  # =========================================================================
+  market-data-db:
+    <<: *pg-defaults
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_market_data
     ports: ["5432:5432"]
     volumes:
@@ -54,7 +145,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [aqros]
 
   market-data:
     <<: *service-defaults
@@ -64,19 +154,17 @@ services:
       args: { SERVICE: market-data, MODULE: aqros_market_data, PORT: "8002" }
     ports: ["8002:8002"]
     environment:
-      AQROS_ENVIRONMENT: dev
-      AQROS_LOG_JSON: "false"
+      <<: *service-env
       AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@market-data-db:5432/aqros_market_data
     depends_on:
       market-data-db:
         condition: service_healthy
 
   feature-store-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+    <<: *pg-defaults
     environment:
       POSTGRES_USER: aqros
-      POSTGRES_PASSWORD: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_feature_store
     ports: ["5433:5432"]
     volumes:
@@ -86,7 +174,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [aqros]
 
   feature-store:
     <<: *service-defaults
@@ -96,24 +183,24 @@ services:
       args: { SERVICE: feature-store, MODULE: aqros_feature_store, PORT: "8003" }
     ports: ["8003:8003"]
     environment:
-      AQROS_ENVIRONMENT: dev
-      AQROS_LOG_JSON: "false"
+      <<: *service-env
       AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@feature-store-db:5432/aqros_feature_store
-      # Reaches the Market Data Service only through its published REST API
-      # (container DNS name + internal port) — never its database.
+      # Upstreams are reached only through published REST APIs (§7.9).
       AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
+      AQROS_REDIS_URL: redis://redis:6379/0
     depends_on:
       feature-store-db:
         condition: service_healthy
       market-data:
+        condition: service_healthy
+      redis:
         condition: service_started
 
   dataset-builder-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+    <<: *pg-defaults
     environment:
       POSTGRES_USER: aqros
-      POSTGRES_PASSWORD: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_dataset_builder
     ports: ["5434:5432"]
     volumes:
@@ -123,7 +210,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [aqros]
 
   dataset-builder:
     <<: *service-defaults
@@ -133,12 +219,8 @@ services:
       args: { SERVICE: dataset-builder, MODULE: aqros_dataset_builder, PORT: "8008" }
     ports: ["8008:8008"]
     environment:
-      AQROS_ENVIRONMENT: dev
-      AQROS_LOG_JSON: "false"
+      <<: *service-env
       AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@dataset-builder-db:5432/aqros_dataset_builder
-      # Reaches Market Data (for labels, computed from future prices) and
-      # Feature Store (for the X matrix) only through their published REST
-      # APIs — never their databases.
       AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
       AQROS_FEATURE_STORE_BASE_URL: http://feature-store:8003
       AQROS_DATASET_ARTIFACT_DIR: /data/dataset-builder/artifacts
@@ -148,16 +230,18 @@ services:
       dataset-builder-db:
         condition: service_healthy
       market-data:
-        condition: service_started
+        condition: service_healthy
       feature-store:
-        condition: service_started
+        condition: service_healthy
 
+  # =========================================================================
+  # Intelligence plane
+  # =========================================================================
   training-pipeline-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+    <<: *pg-defaults
     environment:
       POSTGRES_USER: aqros
-      POSTGRES_PASSWORD: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_training_pipeline
     ports: ["5435:5432"]
     volumes:
@@ -167,7 +251,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [aqros]
 
   training-pipeline:
     <<: *service-defaults
@@ -177,11 +260,8 @@ services:
       args: { SERVICE: training-pipeline, MODULE: aqros_training_pipeline, PORT: "8009" }
     ports: ["8009:8009"]
     environment:
-      AQROS_ENVIRONMENT: dev
-      AQROS_LOG_JSON: "false"
+      <<: *service-env
       AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@training-pipeline-db:5432/aqros_training_pipeline
-      # Reaches the Dataset Builder Service only through its published REST API
-      # — never its database, and never Market Data or Feature Store at all.
       AQROS_DATASET_BUILDER_BASE_URL: http://dataset-builder:8008
       AQROS_ARTIFACT_DIR: /data/training-pipeline/artifacts
     volumes:
@@ -190,14 +270,13 @@ services:
       training-pipeline-db:
         condition: service_healthy
       dataset-builder:
-        condition: service_started
+        condition: service_healthy
 
   model-registry-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
+    <<: *pg-defaults
     environment:
       POSTGRES_USER: aqros
-      POSTGRES_PASSWORD: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
       POSTGRES_DB: aqros_model_registry
     ports: ["5436:5432"]
     volumes:
@@ -207,7 +286,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks: [aqros]
 
   model-registry:
     <<: *service-defaults
@@ -217,10 +295,8 @@ services:
       args: { SERVICE: model-registry, MODULE: aqros_model_registry, PORT: "8004" }
     ports: ["8004:8004"]
     environment:
-      AQROS_ENVIRONMENT: dev
-      AQROS_LOG_JSON: "false"
+      <<: *service-env
       AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@model-registry-db:5432/aqros_model_registry
-      # Reaches the Training Pipeline only through its published REST API.
       AQROS_TRAINING_PIPELINE_BASE_URL: http://training-pipeline:8009
       AQROS_ARTIFACT_DIR: /data/model-registry/artifacts
     volumes:
@@ -229,37 +305,352 @@ services:
       model-registry-db:
         condition: service_healthy
       training-pipeline:
+        condition: service_healthy
+
+  inference-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: inference-service, MODULE: aqros_inference_service, PORT: "8014" }
+    ports: ["8014:8014"]
+    environment:
+      <<: *service-env
+      AQROS_MODEL_REGISTRY_BASE_URL: http://model-registry:8004
+      AQROS_FEATURE_STORE_BASE_URL: http://feature-store:8003
+      AQROS_REDIS_URL: redis://redis:6379/2
+    depends_on:
+      model-registry:
+        condition: service_healthy
+      feature-store:
+        condition: service_healthy
+      redis:
         condition: service_started
+
+  strategy-engine:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: strategy-engine, MODULE: aqros_strategy_engine, PORT: "8011" }
+    ports: ["8011:8011"]
+    environment:
+      <<: *service-env
+      AQROS_MODEL_REGISTRY_BASE_URL: http://model-registry:8004
+      AQROS_FEATURE_STORE_BASE_URL: http://feature-store:8003
+      AQROS_INFERENCE_SERVICE_BASE_URL: http://inference-service:8014
+    depends_on:
+      model-registry:
+        condition: service_healthy
+      feature-store:
+        condition: service_healthy
+      inference-service:
+        condition: service_healthy
+
+  backtesting-engine-db:
+    <<: *pg-defaults
+    profiles: ["backtest"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_backtesting_engine
+    ports: ["5440:5432"]
+    volumes:
+      - backtesting-engine-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_backtesting_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backtesting-engine:
+    <<: *service-defaults
+    profiles: ["backtest"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: backtesting-engine, MODULE: aqros_backtesting_engine, PORT: "8010" }
+    ports: ["8010:8010"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@backtesting-engine-db:5432/aqros_backtesting_engine
+      AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
+      AQROS_FEATURE_STORE_BASE_URL: http://feature-store:8003
+      AQROS_MODEL_REGISTRY_BASE_URL: http://model-registry:8004
+      AQROS_ARTIFACT_DIR: /data/backtesting-engine/artifacts
+    volumes:
+      - backtesting-engine-artifacts:/data/backtesting-engine/artifacts
+    depends_on:
+      backtesting-engine-db:
+        condition: service_healthy
+      market-data:
+        condition: service_healthy
+
+  # =========================================================================
+  # Decision plane — internal only. Risk and Portfolio are never exposed
+  # publicly; they are reached synchronously on the order path.
+  # =========================================================================
+  risk-engine-db:
+    <<: *pg-defaults
+    profiles: ["trading"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_risk_engine
+    ports: ["5437:5432"]
+    volumes:
+      - risk-engine-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_risk_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   risk-engine:
     <<: *service-defaults
+    profiles: ["trading"]
     build:
       context: .
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: risk-engine, MODULE: aqros_risk_engine, PORT: "8005" }
-    ports: ["8005:8005"]
+    ports: ["127.0.0.1:8005:8005"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@risk-engine-db:5432/aqros_risk_engine
+      AQROS_PORTFOLIO_BASE_URL: http://portfolio:8006
+      AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
+    depends_on:
+      risk-engine-db:
+        condition: service_healthy
+      portfolio:
+        condition: service_healthy
+
+  portfolio-db:
+    <<: *pg-defaults
+    profiles: ["trading"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_portfolio
+    ports: ["5438:5432"]
+    volumes:
+      - portfolio-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_portfolio"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   portfolio:
     <<: *service-defaults
+    profiles: ["trading"]
     build:
       context: .
       dockerfile: docker/Dockerfile.service
       args: { SERVICE: portfolio, MODULE: aqros_portfolio, PORT: "8006" }
-    ports: ["8006:8006"]
+    ports: ["127.0.0.1:8006:8006"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@portfolio-db:5432/aqros_portfolio
+      AQROS_RISK_BASE_URL: http://risk-engine:8005
+      AQROS_MARKET_DATA_BASE_URL: http://market-data:8002
+    depends_on:
+      portfolio-db:
+        condition: service_healthy
 
-  audit-ledger:
+  # =========================================================================
+  # Execution plane — internal only, loopback-bound. Never public.
+  # =========================================================================
+  oms-db:
+    <<: *pg-defaults
+    profiles: ["trading"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_oms
+    ports: ["5444:5432"]
+    volumes:
+      - oms-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_oms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  oms:
     <<: *service-defaults
+    profiles: ["trading"]
     build:
       context: .
       dockerfile: docker/Dockerfile.service
-      args: { SERVICE: audit-ledger, MODULE: aqros_audit_ledger, PORT: "8007" }
-    ports: ["8007:8007"]
+      args: { SERVICE: oms, MODULE: aqros_oms, PORT: "8015" }
+    ports: ["127.0.0.1:8015:8015"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@oms-db:5432/aqros_oms
+      AQROS_RISK_BASE_URL: http://risk-engine:8005
+      AQROS_PORTFOLIO_BASE_URL: http://portfolio:8006
+    depends_on:
+      oms-db:
+        condition: service_healthy
+      risk-engine:
+        condition: service_healthy
+      portfolio:
+        condition: service_healthy
+
+  paper-trading-engine-db:
+    <<: *pg-defaults
+    profiles: ["paper", "trading"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_paper_trading
+    ports: ["5442:5432"]
+    volumes:
+      - paper-trading-engine-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_paper_trading"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  paper-trading-engine:
+    <<: *service-defaults
+    profiles: ["paper", "trading"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: paper-trading-engine, MODULE: aqros_paper_trading, PORT: "8012" }
+    ports: ["127.0.0.1:8012:8012"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@paper-trading-engine-db:5432/aqros_paper_trading
+      AQROS_OMS_BASE_URL: http://oms:8015
+      AQROS_PORTFOLIO_BASE_URL: http://portfolio:8006
+      AQROS_RISK_BASE_URL: http://risk-engine:8005
+    depends_on:
+      paper-trading-engine-db:
+        condition: service_healthy
+
+  live-trading-engine-db:
+    <<: *pg-defaults
+    profiles: ["live", "trading"]
+    environment:
+      POSTGRES_USER: aqros
+      POSTGRES_PASSWORD: ${AQROS_POSTGRES_PASSWORD:-aqros}
+      POSTGRES_DB: aqros_live_trading
+    ports: ["5443:5432"]
+    volumes:
+      - live-trading-engine-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aqros -d aqros_live_trading"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  live-trading-engine:
+    <<: *service-defaults
+    profiles: ["live", "trading"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: live-trading-engine, MODULE: aqros_live_trading, PORT: "8013" }
+    # Broker credentials come from the environment / Vault, never the image.
+    ports: ["127.0.0.1:8013:8013"]
+    environment:
+      <<: *service-env
+      AQROS_DATABASE_URL: postgresql+asyncpg://aqros:aqros@live-trading-engine-db:5432/aqros_live_trading
+      AQROS_OMS_BASE_URL: http://oms:8015
+      AQROS_PORTFOLIO_BASE_URL: http://portfolio:8006
+      AQROS_RISK_BASE_URL: http://risk-engine:8005
+      AQROS_PAPER_TRADING_BASE_URL: http://paper-trading-engine:8012
+    depends_on:
+      live-trading-engine-db:
+        condition: service_healthy
+      oms:
+        condition: service_healthy
+      # Live must reconcile with the paper ledger before accepting real orders.
+      paper-trading-engine:
+        condition: service_healthy
+
+  parity-monitor:
+    <<: *service-defaults
+    profiles: ["live", "trading"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { SERVICE: parity-monitor, MODULE: aqros_parity_monitor, PORT: "8021" }
+    ports: ["127.0.0.1:8021:8021"]
+    environment:
+      <<: *service-env
+      AQROS_FEATURE_STORE_BASE_URL: http://feature-store:8003
+      AQROS_REDIS_URL: redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_started
+
+  # =========================================================================
+  # Shared datastores
+  # =========================================================================
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Bounded memory with LRU eviction so a cache bug can never OOM the host.
+    command:
+      - redis-server
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "no"
+    ports: ["6379:6379"]
+    networks: [aqros]
+
+  # Object storage for datasets and model artifacts. Local disk volumes have
+  # zero durability, which would make the "everything is reproducible" claim
+  # false — MinIO provides the S3 API these artifacts should live behind, so
+  # moving local → S3/R2 is an adapter swap rather than a migration.
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-aqros}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-aqros-dev-secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks: [aqros]
+
+  # Creates the artifact buckets on first boot so services do not race to
+  # create them (and so a missing bucket is a startup error, not a runtime one).
+  minio-init:
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+    depends_on:
+      minio:
+        condition: service_started
+    networks: [aqros]
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set aqros http://minio:9000 aqros aqros-dev-secret; do sleep 1; done;
+      mc mb --ignore-existing aqros/aqros-datasets;
+      mc mb --ignore-existing aqros/aqros-models;
+      mc mb --ignore-existing aqros/aqros-reports;
+      mc mb --ignore-existing aqros/aqros-audit;
+      echo 'AQROS buckets ready';
+      "
+    restart: "no"
 
 networks:
   aqros:
     driver: bridge
 
 volumes:
+  auth-db-data:
+  audit-ledger-db-data:
   market-data-db-data:
   feature-store-db-data:
   dataset-builder-db-data:
@@ -268,3 +659,11 @@ volumes:
   training-pipeline-artifacts:
   model-registry-db-data:
   model-registry-artifacts:
+  backtesting-engine-db-data:
+  backtesting-engine-artifacts:
+  risk-engine-db-data:
+  portfolio-db-data:
+  oms-db-data:
+  paper-trading-engine-db-data:
+  live-trading-engine-db-data:
+  minio-data:

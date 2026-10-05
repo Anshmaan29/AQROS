@@ -3,9 +3,9 @@
 Wires the shared ``aqros_core`` app factory (config, logging, health) with
 this service's endpoints: DB engine/session lifecycle, the single httpx
 client used to reach the Training Pipeline's REST API (its sole upstream
-dependency), the local artifact store, the artifact signer, and the
-models/artifacts/transitions/history routers. Mirrors
-``aqros_training_pipeline.app``'s combined-lifespan pattern.
+dependency), the local artifact store, the artifact signer, the
+models/artifacts/transitions/history routers, and the transactional outbox
+dispatcher for guaranteed event delivery.
 """
 
 from __future__ import annotations
@@ -17,16 +17,26 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+import structlog
 from fastapi import FastAPI
 
 from aqros_core.app import create_app
 from aqros_core.health import HealthRegistry
+from aqros_events import InProcessEventBus
 from aqros_model_registry.adapters import db
 from aqros_model_registry.adapters.local_artifact_store import LocalArtifactStore
 from aqros_model_registry.adapters.signer import CosignArtifactVerifier
 from aqros_model_registry.adapters.training_pipeline_client import HttpTrainingPipelineClient
 from aqros_model_registry.api.routes import artifacts, history, models, transitions
 from aqros_model_registry.config import Settings
+from aqros_outbox import (
+    OutboxConfig,
+    OutboxDispatcher,
+    OutboxMetrics,
+    SqlAlchemyOutboxRepository,
+)
+
+_logger = structlog.get_logger(__name__)
 
 settings = Settings()
 
@@ -99,9 +109,26 @@ def _build_app() -> FastAPI:
         app.state.artifact_store = LocalArtifactStore(settings.artifact_dir)
         app.state.artifact_signer = _build_artifact_signer()
 
+        # --- Transactional outbox -------------------------------------------
+        outbox_repo = SqlAlchemyOutboxRepository(session_factory)
+        event_bus = InProcessEventBus()
+        outbox_config = OutboxConfig(
+            poll_interval_seconds=settings.outbox_poll_interval_seconds,
+            batch_size=settings.outbox_batch_size,
+            max_retries=settings.outbox_max_retries,
+            retention_hours=settings.outbox_retention_hours,
+        )
+        outbox_metrics = OutboxMetrics()
+        outbox_dispatcher = OutboxDispatcher(outbox_repo, event_bus, outbox_config, outbox_metrics)
+        await outbox_dispatcher.start()
+        app.state.outbox_repository = outbox_repo
+        app.state.outbox_dispatcher = outbox_dispatcher
+        app.state.outbox_metrics = outbox_metrics
+
         async with base_lifespan(app):
             yield
 
+        await outbox_dispatcher.stop()
         await training_pipeline_http.aclose()
         await engine.dispose()
 

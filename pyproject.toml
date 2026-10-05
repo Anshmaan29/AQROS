@@ -7,7 +7,10 @@ name = "aqros-workspace"
 version = "0.0.0"
 description = "AQROS — Autonomous Quant Research Operating System (monorepo root)"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "aqros-oms",
+    "aqros-live-trading-engine",
+]
 
 [tool.uv]
 package = false
@@ -18,6 +21,10 @@ members = ["libs/*", "backend/*"]
 [tool.uv.sources]
 aqros-core = { workspace = true }
 aqros-events = { workspace = true }
+aqros-outbox = { workspace = true }
+aqros-portfolio = { workspace = true }
+aqros-oms = { workspace = true }
+aqros-live-trading-engine = { workspace = true }
 
 # Dev tooling shared across the whole workspace (PEP 735 dependency group).
 [dependency-groups]
@@ -29,6 +36,9 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.8",
     "httpx>=0.27",
+    "pytest-asyncio>=1.4.0",
+    "aiosqlite>=0.22.1",
+    "greenlet>=3.5.3",
 ]
 
 # ---------------------------------------------------------------------------
@@ -66,12 +76,17 @@ ignore = [
 known-first-party = [
     "aqros_core",
     "aqros_events",
+    "aqros_outbox",
     "aqros_strategy_core",
     "aqros_market_data",
     "aqros_feature_store",
     "aqros_dataset_builder",
     "aqros_training_pipeline",
     "aqros_model_registry",
+    "aqros_risk_engine",
+    "aqros_portfolio",
+    "aqros_oms",
+    "aqros_live_trading",
 ]
 
 # ---------------------------------------------------------------------------
@@ -95,13 +110,18 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 pretty = true
-exclude = ["tests/", "build/", "dist/"]
+exclude = ["tests/", "migrations/", "build/", "dist/"]
 
 # yfinance ships no type information and no third-party stub package exists
 # (checked at Phase 1 time); this is the one deliberate, narrow exception to
 # strict typing, confined to the single adapter module that imports it.
 [[tool.mypy.overrides]]
 module = "yfinance.*"
+ignore_missing_imports = true
+
+# alembic used only in migration templates (aqros-outbox)
+[[tool.mypy.overrides]]
+module = "alembic.*"
 ignore_missing_imports = true
 
 # scikit-learn ships no py.typed marker and no first-party stub package exists

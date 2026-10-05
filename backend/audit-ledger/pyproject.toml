@@ -1,9 +1,18 @@
 [project]
 name = "aqros-audit-ledger"
 version = "0.1.0"
-description = "AQROS audit-ledger service — Append-only, tamper-evident record of every action."
+description = "AQROS audit-ledger — Append-only WORM ledger with a tamper-evident hash chain."
 requires-python = ">=3.12"
-dependencies = ["aqros-core"]
+dependencies = [
+    "aqros-core",
+    "fastapi[standard]>=0.115.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+]
 
 [build-system]
 requires = ["hatchling"]

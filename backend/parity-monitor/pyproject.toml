@@ -1,0 +1,30 @@
+[project]
+name = "aqros-parity-monitor"
+version = "0.1.0"
+description = "AQROS parity-monitor service — Continuously verify online/offline feature parity."
+requires-python = ">=3.12"
+dependencies = [
+    "aqros-core",
+    "aqros-events",
+    "aqros-outbox",
+    "httpx>=0.27",
+    "redis>=5.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=0.24",
+    "pytest-httpx>=0.35",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aqros_parity_monitor"]
+
+[tool.uv.sources]
+aqros-core = { workspace = true }
+aqros-events = { workspace = true }
+aqros-outbox = { workspace = true }

@@ -1,1 +1,1 @@
-"""api layer for the auth service (populated in later phases)."""
+"""Transport layer: FastAPI routers, schemas, and dependency wiring."""

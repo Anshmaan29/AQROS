@@ -16,13 +16,19 @@ from fastapi import FastAPI
 from aqros_core.config import BaseServiceSettings
 from aqros_core.health import HealthRegistry, build_health_router
 from aqros_core.logging import configure_logging
+from aqros_core.middleware import install_observability
 
 
 def create_app(
     settings: BaseServiceSettings,
     health: HealthRegistry | None = None,
 ) -> FastAPI:
-    """Create a configured FastAPI application for a service."""
+    """Create a configured FastAPI application for a service.
+
+    Every service gets the same cross-cutting behaviour for free: structured
+    logging, correlation-ID propagation, and a ``/metrics`` endpoint. Services
+    only add their own routers and health checks on top.
+    """
     logger = configure_logging(settings)
     registry = health if health is not None else HealthRegistry()
 
@@ -37,6 +43,7 @@ def create_app(
     app.state.logger = logger
     app.state.health = registry
     app.include_router(build_health_router(registry, settings))
+    install_observability(app)
 
     @app.get("/", tags=["meta"])
     async def root() -> dict[str, str]:

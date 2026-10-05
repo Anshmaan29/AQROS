@@ -19,6 +19,7 @@ from redis import asyncio as aioredis
 
 from aqros_core.app import create_app
 from aqros_core.health import HealthRegistry
+from aqros_events import InProcessEventBus
 from aqros_feature_store.adapters import db
 from aqros_feature_store.adapters.db import session_scope
 from aqros_feature_store.adapters.market_data_client import HttpMarketDataSource
@@ -27,6 +28,12 @@ from aqros_feature_store.adapters.repository import SqlAlchemyFeatureDefinitionR
 from aqros_feature_store.api.routes import features, pipeline
 from aqros_feature_store.config import Settings
 from aqros_feature_store.domain.feature_definitions import FEATURE_REGISTRY
+from aqros_outbox import (
+    OutboxConfig,
+    OutboxDispatcher,
+    OutboxMetrics,
+    SqlAlchemyOutboxRepository,
+)
 
 _logger = structlog.get_logger(__name__)
 
@@ -118,9 +125,26 @@ def _build_app() -> FastAPI:
         # --- Seed feature definitions -------------------------------------
         await _seed_feature_definitions()
 
+        # --- Transactional outbox -------------------------------------------
+        outbox_repo = SqlAlchemyOutboxRepository(session_factory)
+        event_bus = InProcessEventBus()
+        outbox_config = OutboxConfig(
+            poll_interval_seconds=settings.outbox_poll_interval_seconds,
+            batch_size=settings.outbox_batch_size,
+            max_retries=settings.outbox_max_retries,
+            retention_hours=settings.outbox_retention_hours,
+        )
+        outbox_metrics = OutboxMetrics()
+        outbox_dispatcher = OutboxDispatcher(outbox_repo, event_bus, outbox_config, outbox_metrics)
+        await outbox_dispatcher.start()
+        app.state.outbox_repository = outbox_repo
+        app.state.outbox_dispatcher = outbox_dispatcher
+        app.state.outbox_metrics = outbox_metrics
+
         async with base_lifespan(app):
             yield
 
+        await outbox_dispatcher.stop()
         if redis_client is not None:
             await redis_client.aclose()
         await http_client.aclose()

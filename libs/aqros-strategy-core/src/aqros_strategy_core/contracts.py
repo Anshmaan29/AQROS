@@ -33,10 +33,22 @@ class OrderSide(StrEnum):
 
 
 class OrderType(StrEnum):
-    """The order types supported by the shared OMS contracts."""
+    """The order types supported by the shared OMS contracts.
+
+    STOP and STOP_LIMIT were added because the paper and live engines already
+    supported them while this enum did not. That divergence mattered: a backtest
+    could not faithfully replay a strategy that emits stop orders, so
+    backtest-vs-live parity was structurally unprovable for those orders
+    (CLAUDE.md §7.1 — one codebase for backtest, paper, and live).
+
+    ``stop_price`` on :class:`OrderIntent` carries the trigger; it is required
+    for STOP/STOP_LIMIT and must be ``None`` otherwise.
+    """
 
     MARKET = "market"
     LIMIT = "limit"
+    STOP = "stop"
+    STOP_LIMIT = "stop_limit"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +71,8 @@ class OrderIntent:
     quantity: Decimal
     limit_price: Decimal | None
     emitted_at: datetime
+    stop_price: Decimal | None = None
+    """Trigger price for STOP/STOP_LIMIT; ``None`` for MARKET/LIMIT."""
 
 
 @dataclass(frozen=True, slots=True)

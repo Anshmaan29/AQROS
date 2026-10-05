@@ -43,3 +43,17 @@ tmp/
 # IDE
 .vscode/
 .idea/
+
+# Tooling caches (regenerated on every run — never commit)
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# AI-assistant session scratch space. `.kiro/specs/` IS tracked (it is the
+# requirements/design record); the session snapshots are disposable.
+.kiro/sessions/

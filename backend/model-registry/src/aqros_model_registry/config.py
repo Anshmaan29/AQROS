@@ -55,3 +55,9 @@ class Settings(BaseServiceSettings):
     # tolerant no-op when signing is not configured.
     artifact_signing_enabled: bool = False
     artifact_signing_public_key_path: str | None = None
+
+    # --- Transactional outbox -----------------------------------------------
+    outbox_poll_interval_seconds: float = 1.0
+    outbox_batch_size: int = 50
+    outbox_max_retries: int = 5
+    outbox_retention_hours: int = 72

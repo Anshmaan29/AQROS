@@ -1,1 +1,1 @@
-"""domain layer for the api-gateway service (populated in later phases)."""
+"""Pure domain logic: the platform service topology and exposure policy."""

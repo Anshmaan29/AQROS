@@ -1,1 +1,1 @@
-"""adapters layer for the api-gateway service (populated in later phases)."""
+"""Adapters: I/O at the edges (HTTP proxying, external clients)."""

@@ -25,8 +25,8 @@ from aqros_events.envelope import EventEnvelope
 from aqros_events.errors import EventPublishError
 
 try:
-    from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # type: ignore[import-untyped]
-    from aiokafka.errors import KafkaError  # type: ignore[import-untyped]
+    from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # type: ignore[import-not-found]
+    from aiokafka.errors import KafkaError  # type: ignore[import-not-found]
 except ImportError:
     if not TYPE_CHECKING:
 

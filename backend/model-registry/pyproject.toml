@@ -5,6 +5,8 @@ description = "AQROS model-registry service — single source of truth for train
 requires-python = ">=3.12"
 dependencies = [
     "aqros-core",
+    "aqros-outbox",
+    "aqros-events",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "sqlalchemy[asyncio]>=2.0.35",
@@ -34,3 +36,5 @@ packages = ["src/aqros_model_registry"]
 
 [tool.uv.sources]
 aqros-core = { workspace = true }
+aqros-outbox = { workspace = true }
+aqros-events = { workspace = true }

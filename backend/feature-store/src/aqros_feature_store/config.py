@@ -56,3 +56,9 @@ class Settings(BaseServiceSettings):
     # bars from, so windowed indicators (e.g. a 26-bar MACD) have enough
     # trailing history to compute correctly for the newly-added bars.
     feature_lookback_buffer_days: int = 90
+
+    # --- Transactional outbox -----------------------------------------------
+    outbox_poll_interval_seconds: float = 1.0
+    outbox_batch_size: int = 50
+    outbox_max_retries: int = 5
+    outbox_retention_hours: int = 72
