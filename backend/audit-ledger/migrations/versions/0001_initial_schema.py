@@ -15,6 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Dedicated sequence for chain ordering. Race-free under concurrent appends,
+    # which max()+1 in the repository would not be.
+    op.execute("CREATE SEQUENCE IF NOT EXISTS audit_entries_seq_seq AS BIGINT START WITH 1")
     op.create_table(
         "audit_entries",
         sa.Column("entry_id", sa.String(64), nullable=False),
@@ -30,7 +33,15 @@ def upgrade() -> None:
         sa.Column("entry_hash", sa.String(64), nullable=False),
         # Monotonic chain ordering; independent of wall-clock time so two
         # entries written in the same millisecond still verify in order.
-        sa.Column("sequence", sa.BigInteger(), autoincrement=True, nullable=False),
+        #
+        # Backed by a real sequence rather than SQLAlchemy's autoincrement:
+        # autoincrement only applies to primary keys, and sequence is not one.
+        sa.Column(
+            "sequence",
+            sa.BigInteger(),
+            nullable=False,
+            server_default=sa.text("nextval('audit_entries_seq_seq')"),
+        ),
         sa.PrimaryKeyConstraint("entry_id"),
     )
     op.create_index("ix_audit_entries_recorded_at", "audit_entries", ["recorded_at"])
@@ -60,6 +71,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP SEQUENCE IF EXISTS audit_entries_seq_seq")
     op.execute("DROP TRIGGER IF EXISTS trg_audit_entries_append_only ON audit_entries;")
     op.execute("DROP FUNCTION IF EXISTS audit_entries_append_only();")
     op.drop_index("ix_audit_entries_correlation_id", table_name="audit_entries")

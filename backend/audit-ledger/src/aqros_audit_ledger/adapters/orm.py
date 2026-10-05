@@ -9,12 +9,19 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, String, Text
+from sqlalchemy import BigInteger, DateTime, Index, Sequence, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
+
+
+#: Chain-ordering sequence. Declared on the metadata (not only in the migration)
+#: so ``Base.metadata.create_all`` emits CREATE SEQUENCE too — otherwise any code
+#: path that builds the schema from metadata rather than from Alembic produces a
+#: table whose `sequence` column references a sequence that does not exist.
+AUDIT_SEQUENCE = Sequence("audit_entries_seq_seq", metadata=Base.metadata)
 
 
 class AuditEntryModel(Base):
@@ -36,7 +43,17 @@ class AuditEntryModel(Base):
     entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     # Monotonic sequence, so chain order is recoverable even if ids are
     # reordered or a range query needs a stable window.
-    sequence: Mapped[int] = mapped_column(BigInteger, nullable=False, autoincrement=True)
+    #
+    # Assigned by a PostgreSQL SEQUENCE via server_default, not by
+    # `autoincrement=True`: SQLAlchemy only applies autoincrement to primary
+    # keys, and `sequence` is not one (entry_id is), so it would INSERT NULL and
+    # violate the NOT NULL constraint on every append. A DB sequence is also
+    # race-free, unlike computing max()+1 in the repository.
+    sequence: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=AUDIT_SEQUENCE.next_value(),
+    )
 
     __table_args__ = (
         Index("ix_audit_entries_recorded_at", "recorded_at"),
